@@ -82,6 +82,37 @@ class BackoffTest(unittest.TestCase):
             t += 1
         self.assertEqual(r.a.arr_fails, 0)
 
+    def test_a_retry_fetches_only_the_stop_that_failed(self):
+        r = Rig()
+        good = harness.FixtureNet().arrivals
+        keys = list(good)
+        r.net.arrivals = {keys[0]: good[keys[0]]}      # stop 2's URL is a 404
+        r.a.step(0.0)
+        self.assertEqual(r.a.arr_fails, 1)
+        self.assertIsNotNone(r.a.state.slots[0].minutes)
+        r.net.calls.clear()
+        r.a.step(float(config.RETRY_S))                # retry: stop 1 is fresh, only stop 2 is asked
+        arrivals = [u for u in r.net.calls if "/stops/" in u]
+        self.assertEqual(len(arrivals), 1)
+        self.assertIn(keys[1][0], arrivals[0])
+        r.net.arrivals = good                          # stop 2 recovers
+        t = float(config.RETRY_S)
+        while r.a.arr_fails and t < 2000:
+            t += 1
+            r.a.step(t)
+        self.assertEqual(r.a.arr_fails, 0)
+        self.assertFalse(r.a.retrying)
+
+    def test_a_healthy_stop_is_refreshed_even_while_the_other_keeps_failing(self):
+        r = Rig()
+        good = harness.FixtureNet().arrivals
+        keys = list(good)
+        r.net.arrivals = {keys[0]: good[keys[0]]}
+        for t in range(0, 1500):
+            r.a.step(float(t))
+        age = r.a.state.slots[0].age(1499.0)
+        self.assertLess(age, config.STALE_AFTER_S)     # not left to go stale
+
     def test_weather_backs_off_too(self):
         r = Rig()
         r.net.fail = True
