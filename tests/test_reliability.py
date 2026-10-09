@@ -55,6 +55,33 @@ class BackoffTest(unittest.TestCase):
         self.assertEqual(r.a.arr_fails, 0)
         self.assertAlmostEqual(r.a.next_arrivals - (t - 1), config.ARRIVALS_REFRESH_S, delta=1)
 
+    def test_empty_arrivals_count_as_a_failed_fetch(self):
+        r = Rig()
+        r.a.step(0.0)
+        before = list(r.a.state.slots[0].minutes)
+        good = r.good
+        empty = {"data": {"arrivals": {"uptown": [], "downtown": []}}}
+        r.net.arrivals = {k: empty for k in r.net.arrivals}
+        times = []
+        for t in range(1, 3600):
+            n = r.fetches()
+            r.a.step(float(t))
+            if r.fetches() > n:
+                times.append(t)
+        self.assertEqual(r.good, good)                       # never counted as a good fetch
+        self.assertEqual(r.a.state.slots[0].minutes, before)  # old data kept
+        self.assertGreaterEqual(r.a.arr_fails, 3)
+        self.assertLess(len(times), 20)                      # existing back-off, not hammering
+        gaps = [b - a for a, b in zip(times, times[1:])]
+        self.assertLessEqual(max(gaps), config.RETRY_MAX_S + 1)
+        # still retrying: when arrivals return, it recovers
+        r.net.arrivals = harness.FixtureNet().arrivals
+        t = 3600
+        while r.a.arr_fails and t < 5000:
+            r.a.step(float(t))
+            t += 1
+        self.assertEqual(r.a.arr_fails, 0)
+
     def test_weather_backs_off_too(self):
         r = Rig()
         r.net.fail = True

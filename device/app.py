@@ -53,7 +53,10 @@ class App:
         for slot, stop in zip(self.state.slots, self.stops):
             url = config.ARRIVALS_URL % (stop["slug"], stop.get("line") or stop["route"].lower())
             try:
-                slot.set(feed.parse_arrivals(self.fetch_json(url), stop["direction"], config.TRAINS_STORED), now)
+                minutes = feed.parse_arrivals(self.fetch_json(url), stop["direction"], config.TRAINS_STORED)
+                if not minutes:
+                    raise ValueError("no arrivals")   # empty 200 = failed fetch: keep old data
+                slot.set(minutes, now)
                 any_ok = True
             except Exception as e:  # keep old data, report, retry later
                 ok = False
