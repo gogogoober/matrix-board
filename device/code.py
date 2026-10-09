@@ -33,6 +33,18 @@ def reboot(reason="crash"):
     microcontroller.reset()          # reset reason SOFTWARE: a normal boot, never safe mode
 
 
+class LazySetup:   # setupui (~3 KB of RAM) is only loaded when the setup screen is first used
+    def __init__(self, display, group):
+        self.args = (display, group)
+        self.real = None
+
+    def __getattr__(self, name):
+        if self.real is None:
+            import setupui
+            self.real = setupui.SetupScreen(*self.args)
+        return getattr(self.real, name)
+
+
 def restart():   # the rows (bullet colours, letters) are built once, so reset to apply new stops
     microcontroller.reset()
 
@@ -42,7 +54,6 @@ def main():
     import hw
     import model
     import net
-    import setupui
     import tap
     import ui
 
@@ -66,7 +77,7 @@ def main():
             health.clear_quiet()
             quiet_seen = 0
 
-    the_app = app.App(state, screen, wifi.get_json, wifi, setupui.SetupScreen(display, screen.group),
+    the_app = app.App(state, screen, wifi.get_json, wifi, LazySetup(display, screen.group),
                       stops, restart, reboot, on_good, quiet)
     try:
         accel = hw.make_accelerometer()

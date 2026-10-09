@@ -133,7 +133,7 @@ bottom-right corner with a 1 px black halo cut into the icon. Label rules
 (`feed.pop_label`): never for sun, only above 15% for partly cloudy, always for
 cloud and rain; blue at >= 40%. The row is its own 64x22 bitmap, redrawn only
 when the weather changes. Mockups (not shipped): `sim/weather_mock*.py`.
-RAM after startup is ~61 KB free (printed at boot as `mem_free`; was ~80 KB
+**RAM after startup is ~56 KB free (2026-10-09, measured on the board; it had slid to ~46 KB and HTTPS arrivals then failed with `Sending request failed`: a TLS request needs headroom, keep `mem_free` above ~50 KB).** Per-module cost: ui 17.8 KB, net+libs 8.6, display 8.2, `Ui()` 8.4, accel 5.2, app 5.4, pixfont (now int glyphs) ~4, setupui and `crash.py` load lazily. (Older note: ~61 KB free (printed at boot as `mem_free`; was ~80 KB
 before the setup portal modules, ~57 KB while setup is on screen).
 **API gotcha:** nyc-subway-status route slugs must be lowercase
 (`.../lines/q`); `Q` returns 404. The simulator's fake server is strict about

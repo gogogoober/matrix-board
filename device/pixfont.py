@@ -4,42 +4,39 @@
 tall to stack two lines in the 22 px weather row. No allocation per glyph.
 """
 
+# Glyphs are ints, not strings, so each costs no heap: (width << 25) | bits, where bits
+# are the 5 rows of `width` pixels, row-major, the first pixel being the highest bit.
 GLYPHS = {
-    "0": "111101101101111", "1": "010110010010111", "2": "111001111100111",
-    "3": "111001111001111", "4": "101101111001001", "5": "111100111001111",
-    "6": "111100111101111", "7": "111001001001001", "8": "111101111101111",
-    "9": "111101111001111", "%": "1100111010001000101110011",
-    # letters and punctuation for the setup screens (upper case only)
-    "A": "010101111101101", "B": "110101110101110", "C": "011100100100011",
-    "D": "110101101101110", "E": "111100110100111", "F": "111100110100100",
-    "G": "011100101101011", "H": "101101111101101", "I": "111010010010111",
-    "J": "001001001101010", "K": "101101110101101", "L": "100100100100111",
-    "M": "1000111011101011000110001", "N": "1000111001101011001110001", "O": "010101101101010",
-    "P": "110101110100100", "Q": "010101101111011", "R": "110101110101101",
-    "S": "011100010001110", "T": "111010010010010", "U": "101101101101111",
-    "V": "101101101101010", "W": "1000110001101011010101010", "X": "101101010101101",
-    "Y": "101101010010010", "Z": "111001010100111",
-    " ": "0000000000", "-": "000000111000000", "=": "000111000111000",
-    "?": "110001010000010", "'": "010010000000000", "/": "001001010100100", ".": "00001", ":": "01010", "!": "11101",
+    '0': 0x6007B6F, '1': 0x6002C97, '2': 0x60073E7, '3': 0x60073CF, '4': 0x6005BC9,
+    '5': 0x60079CF, '6': 0x60079EF, '7': 0x6007249, '8': 0x6007BEF, '9': 0x6007BCF,
+    '%': 0xB9D1173, 'A': 0x6002BED, 'B': 0x6006BAE, 'C': 0x6003923, 'D': 0x6006B6E,
+    'E': 0x60079A7, 'F': 0x60079A4, 'G': 0x600396B, 'H': 0x6005BED, 'I': 0x6007497,
+    'J': 0x600126A, 'K': 0x6005BAD, 'L': 0x6004927, 'M': 0xB1DD631, 'N': 0xB1CD671,
+    'O': 0x6002B6A, 'P': 0x6006BA4, 'Q': 0x6002B7B, 'R': 0x6006BAD, 'S': 0x600388E,
+    'T': 0x6007492, 'U': 0x6005B6F, 'V': 0x6005B6A, 'W': 0xB18D6AA, 'X': 0x6005AAD,
+    'Y': 0x6005A92, 'Z': 0x60072A7, ' ': 0x4000000, '-': 0x60001C0, '=': 0x6000E38,
+    '?': 0x6006282, "'": 0x6002400, '/': 0x60012A4, '.': 0x2000001, ':': 0x200000A,
+    '!': 0x200001D,
 }
 
 
 # 4x5 digits for the big temperatures: two digits at k=2 are exactly 17 px wide,
 # the same as the bullet circles above (x=3..19).
 BIG = {
-    "0": "01101001100110010110", "1": "01101110011001101111",
-    "2": "01101001001001001111", "3": "11100001011000011110",
-    "4": "10011001111100010001", "5": "11111000111000011110",
-    "6": "01101000111010010110", "7": "11110001001001000100",
-    "8": "01101001011010010110", "9": "01101001011100010110",
-    "-": "00000000111100000000", ".": "00001",
+    '0': 0x8069996, '1': 0x806E66F, '2': 0x806924F, '3': 0x80E161E, '4': 0x8099F11,
+    '5': 0x80F8E1E, '6': 0x8068E96, '7': 0x80F1244, '8': 0x8069696, '9': 0x8069716,
+    '-': 0x8000F00, '.': 0x2000001,
 }
+
+
+def _on(v, w, i):   # pixel i (row-major) of a glyph of width w
+    return (v >> (5 * w - 1 - i)) & 1
 
 
 def text_width(s, k=1, gap=1, font=GLYPHS):
     n = 0
     for ch in s:
-        n += len(font[ch]) // 5 * k
+        n += (font[ch] >> 25) * k
     return n + gap * (len(s) - 1)
 
 
@@ -50,11 +47,11 @@ def _put(bitmap, x, y, color):
 
 def _walk(s, x, y, k, gap, fn, arg, font=GLYPHS):
     for ch in s:
-        rows = font[ch]
-        w = len(rows) // 5
+        v = font[ch]
+        w = v >> 25
         for r in range(5):
             for q in range(w):
-                if rows[r * w + q] == "1":
+                if _on(v, w, r * w + q):
                     for dy in range(k):
                         for dx in range(k):
                             fn(arg, x + q * k + dx, y + r * k + dy)
@@ -75,11 +72,11 @@ def draw_cols(bitmap, s, x, y, color, cols=(2, 2, 2), k=2, gap=1):
     tall: cols=(2, 2, 2) is the plain double size, cols=(1, 2, 1) a thinner, narrower
     digit of the same height. Only the digits and other 3-wide glyphs."""
     for ch in s:
-        rows = GLYPHS[ch]
+        v = GLYPHS[ch]
         for r in range(5):
             left = x
             for q in range(3):
-                if rows[r * 3 + q] == "1":
+                if _on(v, 3, r * 3 + q):
                     for dy in range(k):
                         for dx in range(cols[q]):
                             _put(bitmap, left + dx, y + r * k + dy, color)
@@ -111,7 +108,7 @@ def draw_big_centered(bitmap, s, cx, y, color, max_width=19, rows=(2, 2, 2, 2, 2
         top = y
         for r in range(5):
             for q in range(4):
-                if glyph[r * 4 + q] == "1":
+                if _on(glyph, 4, r * 4 + q):
                     for dy in range(rows[r]):
                         _put(bitmap, x + q * 2, top + dy, color)
                         _put(bitmap, x + q * 2 + 1, top + dy, color)

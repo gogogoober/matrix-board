@@ -220,6 +220,19 @@ class CodeEntryTest(unittest.TestCase):
             self.picks.with_names = saved
         self.assertEqual(self.resets, 0)
 
+    def test_setupui_is_not_loaded_until_setup_is_used(self):
+        import ast
+        src = open(CODE).read()
+        cls = [n for n in ast.parse(src).body if isinstance(n, ast.ClassDef) and n.name == "LazySetup"][0]
+        ns = {}
+        exec(compile(ast.Module([cls], []), CODE, "exec"), ns)
+        sys.modules.pop("setupui", None)
+        lazy = ns["LazySetup"](harness.FakeDisplay(), object())
+        self.assertNotIn("setupui", sys.modules)
+        lazy.hide()                                        # first use loads it
+        self.assertIn("setupui", sys.modules)
+        self.assertIs(lazy.real.__class__, sys.modules["setupui"].SetupScreen)
+
     def test_boot_prints_a_manifest_first(self):
         import contextlib
         import io

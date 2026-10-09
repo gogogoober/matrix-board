@@ -17,8 +17,9 @@ DIM_O, DIM_B = 0x6A3A10, 0x203C66
 
 def glyph(c, ch, x, y, color, cw=1, rh=1, font=pixfont.GLYPHS):
     """cw: int or tuple of column widths; rh: int or tuple of row heights."""
-    rows = font[ch]
-    gw = len(rows) // 5
+    gw = font[ch] >> 25
+    rows = format(font[ch] & 0x1FFFFFF, "0%db" % (5 * gw))
+    
     cws = cw if isinstance(cw, tuple) else (cw,) * gw
     rhs = rh if isinstance(rh, tuple) else (rh,) * 5
     yy = y
@@ -37,7 +38,7 @@ def glyph(c, ch, x, y, color, cw=1, rh=1, font=pixfont.GLYPHS):
 def tw(s, cw=1, gap=1, font=pixfont.GLYPHS):
     n = 0
     for ch in s:
-        gw = len(font[ch]) // 5
+        gw = font[ch] >> 25
         n += (sum(cw) if isinstance(cw, tuple) else gw * cw)
     return n + gap * (len(s) - 1)
 
