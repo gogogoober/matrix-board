@@ -4,6 +4,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sim import harness  # noqa: E402
+import config  # noqa: E402
 
 OUT = os.path.join(harness.ROOT, "out")
 os.makedirs(OUT, exist_ok=True)
@@ -49,3 +50,17 @@ for i, t in enumerate(tiles):
     sheet.paste(t, ((i % 3) * (t.width + 10), (i // 3) * (t.height + 10)))
 sheet.save(os.path.join(OUT, "5_weather_states.png"))
 print("wrote 5_weather_states.png")
+
+# Wi-Fi setup screens
+net3, wifi3, display3, screen3, a3 = harness.make_setup()
+a3.step(0.0)
+for name, show in (
+    ("6_setup_scanning", a3.setup_ui.scanning),
+    ("7_setup_portal", lambda: a3.setup_ui.portal(config.AP_NAME, "192.168.4.1")),
+    ("8_setup_portal_notice", lambda: a3.setup_ui.portal(config.AP_NAME, "192.168.4.1", "COULD NOT JOIN")),
+    ("9_setup_joining", lambda: a3.setup_ui.joining("The Valley")),
+):
+    show()
+    canvas = render.render(display3.root_group)
+    render.to_image(canvas, cell=10, gain=1.0 / hw.BRIGHTNESS_CAP).save(os.path.join(OUT, name + ".png"))
+    print("wrote", name)

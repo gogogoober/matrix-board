@@ -1,4 +1,4 @@
-"""Tiny pixel fonts (3x5 digits and %, 4x5 digits and -) drawn straight into a Bitmap.
+"""Tiny pixel fonts (3x5 digits, %, A-Z and a little punctuation; 4x5 digits, - and .) drawn straight into a Bitmap.
 
 3x5 glyphs (the % is 5x5); k scales a glyph k times. The built-in font is too
 tall to stack two lines in the 22 px weather row. No allocation per glyph.
@@ -9,6 +9,18 @@ GLYPHS = {
     "3": "111001111001111", "4": "101101111001001", "5": "111100111001111",
     "6": "111100111101111", "7": "111001001001001", "8": "111101111101111",
     "9": "111101111001111", "%": "1100111010001000101110011",
+    # letters and punctuation for the setup screens (upper case only)
+    "A": "010101111101101", "B": "110101110101110", "C": "011100100100011",
+    "D": "110101101101110", "E": "111100110100111", "F": "111100110100100",
+    "G": "011100101101011", "H": "101101111101101", "I": "111010010010111",
+    "J": "001001001101010", "K": "101101110101101", "L": "100100100100111",
+    "M": "1000111011101011000110001", "N": "1000111001101011001110001", "O": "010101101101010",
+    "P": "110101110100100", "Q": "010101101111011", "R": "110101110101101",
+    "S": "011100010001110", "T": "111010010010010", "U": "101101101101111",
+    "V": "101101101101010", "W": "1000110001101011010101010", "X": "101101010101101",
+    "Y": "101101010010010", "Z": "111001010100111",
+    " ": "0000000000", "-": "000000111000000", "=": "000111000111000",
+    "?": "110001010000010", ".": "00001", ":": "01010", "!": "11101",
 }
 
 
@@ -20,7 +32,7 @@ BIG = {
     "4": "10011001111100010001", "5": "11111000111000011110",
     "6": "01101000111010010110", "7": "11110001001001000100",
     "8": "01101001011010010110", "9": "01101001011100010110",
-    "-": "00000000111100000000",
+    "-": "00000000111100000000", ".": "00001",
 }
 
 
@@ -51,6 +63,12 @@ def _walk(s, x, y, k, gap, fn, arg, font=GLYPHS):
 
 def draw(bitmap, s, x, y, color, k=1, gap=1):
     _walk(s, x, y, k, gap, lambda c, px, py: _put(bitmap, px, py, c), color)
+
+
+def draw_text(bitmap, s, x, y, color, font=GLYPHS, k=1, gap=1):
+    """Text in any of the fonts above (a glyph missing from `font` is skipped)."""
+    s = "".join(ch for ch in s if ch in font)
+    _walk(s, x, y, k, gap, lambda c, px, py: _put(bitmap, px, py, c), color, font)
 
 
 def draw_big_centered(bitmap, s, cx, y, color, max_width=19):

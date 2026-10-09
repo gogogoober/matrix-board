@@ -6,6 +6,7 @@ import config
 import hw
 import model
 import net
+import setupui
 import tap
 import ui
 
@@ -13,11 +14,14 @@ display = hw.make_display()
 state = model.State(config.STOPS)
 screen = ui.Ui(state)
 hw.show(display, screen.group)
-the_app = app.App(state, screen, net.Net().get_json)
+wifi = net.Net()
+the_app = app.App(state, screen, wifi.get_json, wifi, setupui.SetupScreen(display, screen.group))
 accel = hw.make_accelerometer()
 taps = tap.DoubleTap(config.TAP_ONSET_G)
 gc.collect()
 print("ready: subway sign, mem_free", gc.mem_free())
+if not wifi.has_credentials():   # fresh device: go straight to Wi-Fi setup
+    the_app.enter_setup(time.monotonic())
 
 last_step = 0.0
 while True:

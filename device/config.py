@@ -33,3 +33,9 @@ TAP_ONSET_G = 0.5         # a bump counts as a tap above this change in g (your 
 TAP_FLASH_S = 1.0         # how long the white top-row flash stays on
 RAIN_ICON_POP = 40        # rain chance (%) at which the icon becomes rain
 PARTLY_POP_MIN = 15       # partly cloudy shows the % only above this
+
+# Wi-Fi setup portal (double tap). See docs/wifi-setup.md.
+AP_NAME = "Subway LED"    # open network the sign creates; keep it short (shown on the panel)
+PORTAL_IP = "192.168.4.1" # ESP32 default; used if the ESP does not report its address
+PORTAL_TIMEOUT_S = 600    # setup mode gives up and returns to the sign after this
+PORTAL_DNS = True         # answer every DNS query with the sign (best effort)
