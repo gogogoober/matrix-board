@@ -15,6 +15,7 @@ from adafruit_esp32spi import adafruit_esp32spi, adafruit_esp32spi_socket
 import config
 import creds
 import hw
+import picks
 
 WL_AP_FAILED = 9
 
@@ -83,7 +84,7 @@ class Net:
         # on the panel), so use the ESP32's fixed AP address.
         ip = config.PORTAL_IP
         ip_bytes = bytes(int(p) for p in ip.split("."))
-        self._server = portal.Server(self.esp, nets)
+        self._server = portal.Server(self.esp, nets, current=picks.load() or config.STOPS)
         self._server.start()
         if config.PORTAL_DNS:
             try:
@@ -96,7 +97,8 @@ class Net:
         return ip
 
     def portal_poll(self):
-        """(ssid, password) once the form was submitted, else None."""
+        """(ssid, password, stops) once the form was submitted, else None.
+        ssid/password are None if Wi-Fi was left alone, stops None if no stop changed."""
         if self._dns:
             try:
                 self._dns.poll()
@@ -114,6 +116,9 @@ class Net:
             time.sleep(settle)   # let the phone finish receiving the last page
             self.esp.reset()
         gc.collect()
+
+    def save_picks(self, stops):
+        picks.save(stops)
 
     def join(self, ssid, password, tries=2):
         """Try to join a network; on success remember it. Returns True/False."""

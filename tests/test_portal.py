@@ -172,7 +172,7 @@ class ServerTest(unittest.TestCase):
     def test_valid_post_returns_credentials_and_confirms(self):
         esp, srv = self.make()
         c = esp.connect_client(post("n=Home&m=&p=hunter22+x"))
-        self.assertEqual(srv.poll(), ("Home", "hunter22 x"))
+        self.assertEqual(srv.poll(), ("Home", "hunter22 x", None))
         self.assertIn(b"Joining <b>Home</b>", esp.written[c])
         self.assertNotIn(b"hunter22", esp.written[c])        # never echo the password
 
@@ -189,7 +189,7 @@ class ServerTest(unittest.TestCase):
         # the fake hands over 256 bytes at most per read; make the request longer
         big = post("n=Home&p=password1&pad=" + "a" * 300)
         esp.clients[c] = bytearray(big)
-        self.assertEqual(srv.poll(), ("Home", "password1"))
+        self.assertEqual(srv.poll(), ("Home", "password1", None))
 
     def test_empty_connection_times_out_cleanly(self):
         esp, srv = self.make()

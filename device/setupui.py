@@ -76,6 +76,9 @@ class SetupScreen:
     def connected(self, ssid):
         self.message("CONNECTED", _fit(ssid), GREEN)
 
+    def saved(self):
+        self.message("STOPS SAVED", "RESTARTING", GREEN)
+
     def failed(self, line1, line2=None):
         self.message(line1, line2, RED)
 

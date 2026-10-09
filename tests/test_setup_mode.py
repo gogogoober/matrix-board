@@ -104,7 +104,7 @@ class SetupModeTest(unittest.TestCase):
 
     def test_successful_submit_joins_saves_shows_connected_then_sign(self):
         self.a.double_tap(10.0)
-        self.wifi.submit = ("HomeNet", "hunter22")
+        self.wifi.submit = ("HomeNet", "hunter22", None)
         self.a.step(11.0)
         self.assertEqual(self.wifi.saved, ("HomeNet", "hunter22"))
         self.assertEqual(self.a.mode, app.NOTICE)
@@ -115,7 +115,7 @@ class SetupModeTest(unittest.TestCase):
     def test_failed_join_brings_the_portal_back_with_a_notice(self):
         self.a.double_tap(10.0)
         self.wifi.join_ok = False
-        self.wifi.submit = ("HomeNet", "wrongpass1")
+        self.wifi.submit = ("HomeNet", "wrongpass1", None)
         self.a.step(11.0)
         self.assertEqual(self.a.mode, app.SETUP)
         self.assertEqual(self.wifi.calls.count("start"), 2)

@@ -16,12 +16,15 @@ NOTICE_S = 3.0
 
 
 class App:
-    def __init__(self, state, ui, fetch_json, wifi=None, setup_ui=None):
+    def __init__(self, state, ui, fetch_json, wifi=None, setup_ui=None, stops=None, restart=None):
         self.state = state
         self.ui = ui
         self.fetch_json = fetch_json
         self.wifi = wifi
         self.setup_ui = setup_ui
+        self.stops = stops if stops is not None else config.STOPS
+        self.restart = restart    # called when setup ends after the stops changed (the sign's rows are built once)
+        self.restart_pending = False
         self.next_arrivals = 0.0
         self.next_weather = 0.0
         self.last_error = None
@@ -35,8 +38,8 @@ class App:
 
     def _fetch_arrivals(self, now):
         ok = True
-        for slot, stop in zip(self.state.slots, config.STOPS):
-            url = config.ARRIVALS_URL % (stop["slug"], stop["route"].lower())
+        for slot, stop in zip(self.state.slots, self.stops):
+            url = config.ARRIVALS_URL % (stop["slug"], stop.get("line") or stop["route"].lower())
             try:
                 slot.set(feed.parse_arrivals(self.fetch_json(url), stop["direction"], config.TRAINS_STORED), now)
             except Exception as e:  # keep old data, report, retry sooner
@@ -126,6 +129,8 @@ class App:
         self.next_arrivals = now   # refresh right away
         self.next_weather = now
         self.ui.render(now)
+        if self.restart_pending and self.restart is not None:
+            self.restart()
 
     def _step_setup(self, now):
         if now >= self.setup_until:
@@ -138,7 +143,19 @@ class App:
             return
         if got is None:
             return
-        ssid, password = got
+        ssid, password, stops = got
+        if stops is not None:
+            try:
+                self.wifi.save_picks(stops)
+                self.stops = stops
+                self.restart_pending = True
+            except Exception as e:
+                self._fail(now, e)
+                return
+        if ssid is None:     # stops only: leave Wi-Fi alone
+            self._stop_portal()
+            self._notice(now, self.setup_ui.saved)
+            return
         self._stop_portal()
         self.setup_ui.joining(ssid)
         try:

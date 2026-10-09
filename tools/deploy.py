@@ -22,9 +22,9 @@ DRIVE = Path("/Volumes/CIRCUITPY")
 
 # Every file that ships to the board (relative to device/). Add app modules here.
 # code.py is last: its write triggers the reload.
-SHIPPED = ["hw.py", "config.py", "feed.py", "model.py", "pixfont.py", "icons.py", "tap.py", "creds.py", "portal.py", "setupui.py", "ui.py", "app.py", "net.py", "code.py"]
+SHIPPED = ["hw.py", "config.py", "feed.py", "model.py", "pixfont.py", "icons.py", "tap.py", "creds.py", "picks.py", "portal.py", "setupui.py", "ui.py", "app.py", "net.py", "code.py"]
 # Hardware tests only need the hardware file.
-TEST_NEEDS = ["hw.py", "config.py", "tap.py", "creds.py", "portal.py", "pixfont.py", "setupui.py", "net.py"]
+TEST_NEEDS = ["hw.py", "config.py", "tap.py", "creds.py", "picks.py", "portal.py", "pixfont.py", "setupui.py", "net.py"]
 
 
 def wait_for_drive(timeout=30):
@@ -45,6 +45,13 @@ def put(src, name):
     print("copied", src.relative_to(ROOT), "->", name)
 
 
+def put_stops():
+    """The station files the setup page serves (built by tools/build_stops.py)."""
+    (DRIVE / "stops").mkdir(exist_ok=True)
+    for f in sorted((DEVICE / "stops").glob("*.txt")):
+        put(f, "stops/" + f.name)
+
+
 def main(argv):
     if len(argv) >= 1 and argv[0] == "list":
         for p in sorted(TESTS.glob("t*.py")):
@@ -57,11 +64,13 @@ def main(argv):
         wait_for_drive()
         for m in TEST_NEEDS:
             put(DEVICE / m, m)
+        put_stops()
         put(test, "code.py")  # last: this write triggers the reload
         print("now read output: python3 tools/serial_tail.py 20")
         return
     if len(argv) == 1 and argv[0] == "app":
         wait_for_drive()
+        put_stops()   # data first: code.py's write triggers the reload
         for m in SHIPPED:
             put(DEVICE / m, m)
         return

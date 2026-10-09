@@ -1,0 +1,29 @@
+1|1|D82233|Uptown,Downtown|1
+2|2|D82233|Uptown,Downtown|2
+3|3|D82233|Uptown,Downtown|3
+4|4|009952|Uptown,Downtown|4
+5|5|009952|Uptown,Downtown|5
+6|6|009952|Uptown,Downtown|6
+6x|6X|009952|Uptown,Downtown|6X
+7|7|9A38A1|Flushing,Manhattan|7
+7x|7X|9A38A1|Flushing,Manhattan|7X
+a|A|0062CF|Uptown,Downtown|A
+b|B|EB6800|Uptown,Downtown|B
+c|C|0062CF|Uptown,Downtown|C
+d|D|EB6800|Uptown,Downtown|D
+e|E|0062CF|Uptown,Downtown|E
+f|F|EB6800|Uptown,Downtown|F
+fs|S|7C858C|Prospect Park,Franklin Av|S Franklin Av
+fx|FX|EB6800|Uptown,Downtown|FX
+g|G|799534|Queens,Brooklyn|G
+gs|S|7C858C|Times Sq,Grand Central|S 42 St
+h|S|7C858C|Broad Channel,Rockaway Park|S Rockaway
+j|J|8E5C33|Jamaica,Manhattan|J
+l|L|7C858C|Manhattan,Brooklyn|L
+m|M|EB6800|Uptown,Downtown|M
+n|N|F6BC26|Uptown,Downtown|N
+q|Q|F6BC26|Uptown,Downtown|Q
+r|R|F6BC26|Uptown,Downtown|R
+si|SIR|08179C|St George,Tottenville|SIR
+w|W|F6BC26|Uptown,Downtown|W
+z|Z|8E5C33|Jamaica,Manhattan|Z

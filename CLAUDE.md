@@ -21,8 +21,11 @@ and `.venv/bin/python3 sim/run.py`. Deploy with `python3 tools/deploy.py app`.
 tap -> scan -> open AP "Subway LED" -> page at 192.168.4.1 -> join + save in
 NVM (`creds.py`). See `docs/wifi-setup.md` for flow, what is verified on the
 board and what still needs a phone (page over the air, captive DNS).
+**Stop picker built (2026-10-09, laptop-tested, not yet on the board):** same portal
+page picks two stops from `device/stops/` (see `docs/wifi-setup.md`); saved in NVM
+(`picks.py`), applied by a reload.
 Not yet done: on-panel photo check of the layout, sim-vs-photo fidelity check,
-a wall power supply, stop editing UI (V2, same portal page), direction cue in rows.
+a wall power supply, board test of the stop picker, direction cue in rows.
 
 ## Open decisions (ask the user before assuming)
 

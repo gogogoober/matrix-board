@@ -7,10 +7,12 @@ Never print a request body: it contains the Wi-Fi password.
 """
 import time
 
+import picks
+
 NO_SOCK = 255
 MAX_NETWORKS = 20
-MAX_REQUEST = 2048
-MAX_BODY = 512
+MAX_REQUEST = 3072
+MAX_BODY = 1024
 
 
 def _field(n, key):
@@ -49,34 +51,81 @@ PAGE_HEAD = (
     '<!doctype html><meta name=viewport content="width=device-width,initial-scale=1">'
     "<title>Subway LED</title>"
     '<body style="font:18px sans-serif;margin:16px;max-width:420px">'
-    "<h3>Subway LED Wi-Fi</h3>"
+    "<h3>Subway LED setup</h3>"
 )
 FORM_HEAD = '<form method=post action=/s>'
-FORM_TAIL = (
+WIFI_TAIL = (
     '<p><input name=m placeholder="or type a network name" style="width:100%;font:inherit">'
     '<p><input name=p type=password placeholder="Wi-Fi password" style="width:100%;font:inherit">'
-    '<p><button style="font:inherit;width:100%;padding:8px">Connect</button></form>'
+)
+BUTTON = '<p><button style="font:inherit;width:100%%;padding:8px">%s</button></form>'
+SEL = 'style="width:100%;font:inherit;margin-bottom:6px"'
+
+# Picks a line -> loads that line's stations from /l/<line> -> relabels the direction.
+SCRIPT = (
+    "<script>function L(i){var l=document.getElementById('l'+i),s=document.getElementById('s'+i),"
+    "d=document.getElementById('d'+i),o=l.options[l.selectedIndex];"
+    "d.options[0].text=o.getAttribute('data-u')||'Uptown';"
+    "d.options[1].text=o.getAttribute('data-d')||'Downtown';s.innerHTML='';if(!l.value)return;"
+    "var x=new XMLHttpRequest();x.onload=function(){var r=x.responseText.split('\\n'),"
+    "c=s.getAttribute('data-cur');s.innerHTML='';for(var k=0;k<r.length;k++){if(!r[k])continue;"
+    "var p=r[k].split('|'),e=document.createElement('option');e.value=p[0];e.textContent=p[1];"
+    "if(p[0]==c)e.selected=true;s.appendChild(e)}s.removeAttribute('data-cur')};"
+    "x.open('GET','/l/'+l.value);x.send()}"
+    "for(var i=1;i<3;i++){if(document.getElementById('l'+i).value)L(i)}</script>"
 )
 
 
-def page(nets, message=None):
-    """The whole setup page as a str. About 1 KB plus ~40 bytes per network."""
+def _stop_block(i, line_opts, cur):
+    """Line, station and direction pickers for stop number i. cur = current stop or None."""
+    line = picks.line_of(cur) if cur else ""
+    opts = line_opts.replace('value="%s"' % esc(line), 'value="%s" selected' % esc(line), 1) if line else line_opts
+    return (
+        "<p><b>Stop %d</b><br>" % i
+        + '<select name=l%d id=l%d onchange="L(%d)" %s><option value="">Line%s</select>' % (i, i, i, SEL, opts)
+        + '<select name=s%d id=s%d %s%s></select>' % (i, i, SEL, ' data-cur="%s"' % esc(cur["slug"]) if cur else "")
+        + '<select name=d%d id=d%d %s><option value=uptown%s>Uptown<option value=downtown%s>Downtown</select>' % (
+            i, i, SEL,
+            " selected" if not cur or cur["direction"] == "uptown" else "",
+            " selected" if cur and cur["direction"] == "downtown" else "")
+    )
+
+
+def page(nets, message=None, stop_lines=None, current=()):
+    """The whole setup page as a str. About 1 KB plus ~40 bytes per network.
+    stop_lines (from picks.lines) adds two stop pickers, about 3.5 KB more."""
     parts = [PAGE_HEAD]
     if message:
         parts.append('<p style="color:#b00">' + esc(message))
     parts.append(FORM_HEAD)
     parts.append('<select name=n style="width:100%;font:inherit">')
+    if stop_lines is not None:
+        parts.append('<option value="">(keep current Wi-Fi)')
     for ssid, _rssi in nets:
         e = esc(ssid)
         parts.append('<option value="%s">%s' % (e, e))
     parts.append("</select>")
-    parts.append(FORM_TAIL)
+    parts.append(WIFI_TAIL)
+    if stop_lines is not None:
+        line_opts = "".join('<option value="%s" data-u="%s" data-d="%s">%s' % (
+            esc(ln[0]), esc(ln[3]), esc(ln[4]), esc(ln[5])) for ln in stop_lines)
+        for i in (1, 2):
+            cur = current[i - 1] if len(current) >= i else None
+            parts.append(_stop_block(i, line_opts, cur))
+    parts.append(BUTTON % ("Save" if stop_lines is not None else "Connect"))
+    if stop_lines is not None:
+        parts.append(SCRIPT)
     return "".join(parts)
 
 
-def done_page(ssid):
-    return (PAGE_HEAD + "<p>Joining <b>" + esc(ssid) + "</b>.<p>Reconnect your phone to "
-            "your normal Wi-Fi. If the sign cannot join, the Subway LED network comes back.")
+def done_page(ssid, stops_saved=False):
+    out = PAGE_HEAD
+    if stops_saved:
+        out += "<p>Stops saved. The sign restarts in a few seconds."
+    if ssid:
+        out += ("<p>Joining <b>" + esc(ssid) + "</b>.<p>Reconnect your phone to "
+                "your normal Wi-Fi. If the sign cannot join, the Subway LED network comes back.")
+    return out
 
 
 def urldecode(s):
@@ -170,12 +219,18 @@ def dns_reply(query, ip):
 
 
 class Server:
-    """HTTP on port 80 over ESP32 sockets. Every request is answered with the
-    setup page; POST /s with a valid form is returned by poll()."""
+    """HTTP on port 80 over ESP32 sockets. GET /l/<line> streams that line's
+    stations, every other request gets the setup page, and POST /s with a valid
+    form is returned by poll() as (ssid, password, stops): ssid/password are
+    None when Wi-Fi was left alone, stops is None when no stop was chosen,
+    else the full list of stop dicts (unchanged ones kept from `current`).
+    Pass stop_base=None to serve a Wi-Fi-only page."""
 
-    def __init__(self, esp, nets, port=80, read_timeout=1.0):
+    def __init__(self, esp, nets, port=80, read_timeout=1.0, current=(), stop_base=picks.BASE):
         self.esp = esp
         self.nets = nets
+        self.current = list(current)
+        self.stop_base = stop_base
         self.port = port
         self.read_timeout = read_timeout
         self.sock = None
@@ -229,26 +284,65 @@ class Server:
                 time.sleep(0.005)
         return buf
 
-    def _send(self, c, body):
+    def _send(self, c, body, ctype="text/html"):
         data = body.encode("utf-8")
-        head = ("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: %d\r\n"
-                "Cache-Control: no-store\r\nConnection: close\r\n\r\n" % len(data))
-        self.esp.socket_write(c, head.encode("utf-8") + data)
+        head = ("HTTP/1.1 200 OK\r\nContent-Type: %s; charset=utf-8\r\nContent-Length: %d\r\n"
+                "Cache-Control: no-store\r\nConnection: close\r\n\r\n" % (ctype, len(data)))
+        self.esp.socket_write(c, head.encode("utf-8"))
+        for i in range(0, len(data), 1024):
+            self.esp.socket_write(c, data[i:i + 1024])
+
+    def _page(self, message=None):
+        lines = None
+        if self.stop_base is not None:
+            try:
+                lines = picks.lines(self.stop_base)
+            except Exception as e:   # no station data: Wi-Fi-only page
+                print("portal: no stop data", type(e).__name__)
+        return page(self.nets, message, lines, self.current)
+
+    def _submission(self, form):
+        """(ssid, password, stops, error)."""
+        ssid = password = None
+        if (form.get("m") or "").strip() or form.get("n") or form.get("p"):
+            ssid, password, error = credentials_from_form(form)
+            if error:
+                return None, None, None, error
+        stops = list(self.current)
+        changed = False
+        for i in (1, 2):
+            line, station = form.get("l%d" % i), form.get("s%d" % i)
+            if not line or not station:
+                continue
+            stop = picks.make_stop(line, station, form.get("d%d" % i) or "", self.stop_base)
+            if stop is None or i > len(stops):
+                return None, None, None, "Pick a line, a station and a direction."
+            stops[i - 1] = stop
+            changed = True
+        if ssid is None and not changed:
+            return None, None, None, "Choose a Wi-Fi network or a stop."
+        return ssid, password, (stops if changed else None), None
 
     def _handle(self, c):
         method, path, body = parse_request(self._read(c))
         self.requests += 1
         self.last_path = path[:40]
         found = None
-        if method == "POST" and path.startswith("/s"):
-            ssid, password, error = credentials_from_form(parse_form(body))
-            if error is None:
-                found = (ssid, password)
-                self._send(c, done_page(ssid))
+        if method == "GET" and path.startswith("/l/") and self.stop_base is not None:
+            line = path[3:].split("?")[0]
+            if picks.line_info(line, self.stop_base) is None:
+                self._send(c, "", "text/plain")
             else:
-                self._send(c, page(self.nets, error))
+                self._send(c, picks.station_text(line, self.stop_base), "text/plain")
+        elif method == "POST" and path.startswith("/s"):
+            ssid, password, stops, error = self._submission(parse_form(body))
+            if error is None:
+                found = (ssid, password, stops)
+                self._send(c, done_page(ssid, stops is not None))
+            else:
+                self._send(c, self._page(error))
         else:
-            self._send(c, page(self.nets, self.message))
+            self._send(c, self._page(self.message))
         return found
 
 

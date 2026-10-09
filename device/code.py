@@ -6,16 +6,25 @@ import config
 import hw
 import model
 import net
+import picks
 import setupui
 import tap
 import ui
 
 display = hw.make_display()
-state = model.State(config.STOPS)
+stops = picks.load() or config.STOPS   # chosen on the setup page, else config.py
+state = model.State(stops)
 screen = ui.Ui(state)
 hw.show(display, screen.group)
 wifi = net.Net()
-the_app = app.App(state, screen, wifi.get_json, wifi, setupui.SetupScreen(display, screen.group))
+
+
+def restart():   # the rows (bullet colours, letters) are built once, so reload to apply new stops
+    import supervisor
+    supervisor.reload()
+
+
+the_app = app.App(state, screen, wifi.get_json, wifi, setupui.SetupScreen(display, screen.group), stops, restart)
 accel = hw.make_accelerometer()
 taps = tap.DoubleTap(config.TAP_ONSET_G)
 gc.collect()

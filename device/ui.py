@@ -37,12 +37,17 @@ LINE_COLORS = {
     "L": 0xA7A9AC,
     "N": 0xFCCC0A, "Q": 0xFCCC0A, "R": 0xFCCC0A, "W": 0xFCCC0A,
     "S": 0x808183,
+    "6X": 0x00933C, "7X": 0xB933AD, "FX": 0xFF6319, "SIR": 0x0039A6,
 }
 DEFAULT_LINE = 0x808183
 
-# Arrival times: white, with the first train brighter (80%) than the second (50%)
-TIME_COLORS = (0xCCCCCC, 0x808080)
-TIME_COLORS_STALE = (0x505050, 0x383838)
+# Arrival times: white, the first train bright and the second dim. The panel has
+# 16 brightness levels per colour and the cap (hw.BRIGHTNESS_CAP) puts full white
+# on level 3, so the only clearly dimmer step is level 1: 0x505050 after the cap.
+# (0x808080 was level 2, only a third dimmer, which looked almost the same.)
+TIME_COLORS = (0xFFFFFF, 0x505050)
+TIME_COLORS_STALE = (0x505050, 0x505050)
+STALE = 0x505050   # weather row placeholder when there is no data
 WHITE = 0xFFFFFF
 BLUE = 0x40A0FF
 DIVIDER = 0x303030
@@ -54,6 +59,7 @@ DROP = 0x3090FF
 
 # palette indices of the weather bitmap
 W_BLACK, W_WHITE, W_HI, W_LO, W_SUN, W_CLOUD, W_DROP, W_DIM = range(8)
+LOW_ROWS = (2, 2, 1, 2, 2)   # 9 px tall, same width as the high
 W_Y = 42   # screen row where the weather bitmap starts
 W_H = 22
 
@@ -102,7 +108,7 @@ class Ui:
             # route letter: black cut-out, drawn twice 1 px apart for a 2 px stroke
             for dx in (0, 1):
                 self.group.append(label.Label(
-                    terminalio.FONT, text=slot.route, color=0x000000,
+                    terminalio.FONT, text=slot.route[:2], color=0x000000,
                     anchor_point=(0.5, 0.5), anchored_position=(BULLET_X + dx, cy),
                 ))
             row = []
@@ -176,7 +182,8 @@ class Ui:
         hi, lo, kind, pop = view
         # centred on the bullet column: two digits span exactly the circle's width
         pixfont.draw_big_centered(b, "%d" % hi, BULLET_X, 1, W_HI)
-        pixfont.draw_big_centered(b, "%d" % lo, BULLET_X, 12, W_LO)
+        # the low is squished to 9 rows (middle bar 1 px) so it clears the bottom edge
+        pixfont.draw_big_centered(b, "%d" % lo, BULLET_X, 12, W_LO, rows=LOW_ROWS)
         icons.draw(b, kind, 45, 3, W_SUN, W_CLOUD, W_DROP)
         if pop is not None:
             x = hw.WIDTH - 1 - pixfont.text_width(pop)

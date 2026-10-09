@@ -78,19 +78,40 @@ Tests `t8_ap_portal`, `t8b_ap_probe`, `t8c_app_setup` (no phone needed):
 4. Taps during the 2 to 10 s scan and join are missed (blocking calls).
 5. 2.4 GHz networks only; no WPA-Enterprise or sign-in-page networks.
 
-## V2 (not built)
+## Stop picker (built 2026-10-09, laptop-tested only)
 
-Stop picker on the same page: station, route, direction for two stops, saved
-next to the credentials in NVM. `config.STOPS` becomes the default. The form
-parser (`portal.parse_form`) and the NVM record format already allow extra
-fields; the page would need the stop list (too big for RAM as the full
-station list; use a short curated list or a search call made while joined).
+The same page also picks the two stops (line, station, direction). Wi-Fi may be
+left on "(keep current Wi-Fi)" to change only stops, and vice versa.
+
+- **Data:** `device/stops/` (built by `tools/build_stops.py` from the API,
+  15.5 KB total, copied by `deploy.py`): `lines.txt` (slug|route|colour|up,down
+  labels|menu text) and one `<line>.txt` per line with its stations in route
+  order. A row is just the station name; the API slug is `picks.slugify(name)`
+  unless the row says `Name|slug` (2 exceptions).
+- **Flow:** picking a line makes the page `GET /l/<line>`; the board answers
+  with `slug|Name` rows (1-3 KB, read from flash on request, nothing kept in
+  RAM). Direction labels per line (L: Manhattan/Brooklyn, 7: Flushing/Manhattan,
+  ...) are only text: the stored and sent value is always `uptown`/`downtown`,
+  which is all the API knows. Labels for G, 7, SIR and the S shuttles are
+  guesses; edit `DIR_LABELS` in the build tool.
+- **Saved:** `picks.py` writes `{line, route, station slug, direction}` per
+  stop to NVM at offset 128 (Wi-Fi record is at 0). `code.py` uses them instead
+  of `config.STOPS` when valid. The board validates every submission against
+  the station files; an unchanged stop keeps its old value.
+- **Applying:** the sign's rows are built once, so after stops change the app
+  shows "STOPS SAVED / RESTARTING" and `supervisor.reload()`s when setup ends.
+- **Not yet verified on the board:** streaming `/l/<line>` through the ESP32
+  socket, the page's JavaScript in a phone's captive-portal browser, RAM with
+  the bigger page (~5.4 KB string), a real submission with 2 stops.
+  Run `python3 tools/deploy.py app`, then check `mem_free` in setup mode.
 
 ## Files
 
 | File | Role |
 |---|---|
 | `device/creds.py` | NVM load/save/clear, validated |
+| `device/picks.py` | station files, stop validation, NVM record for the two stops |
+| `tools/build_stops.py` | builds `device/stops/` from the API |
 | `device/portal.py` | scan de-dupe, HTML page, form + request parsing, HTTP server, DNS catch-all |
 | `device/setupui.py` | full-screen setup pages (3x5 pixel font) |
 | `device/net.py` | `scan`, `portal_start/poll/stop`, `join`, `has_credentials` |
