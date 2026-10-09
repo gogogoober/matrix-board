@@ -6,6 +6,7 @@ import unittest
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "device"))
 
+import crash  # noqa: E402
 import health  # noqa: E402
 
 
@@ -50,8 +51,8 @@ class CountersTest(unittest.TestCase):
     def test_roundtrip_and_defaults(self):
         n = blank()
         self.assertEqual(health.load(n), (0, 0))
-        self.assertEqual(health.note_crash(n), 1)
-        self.assertEqual(health.note_crash(n), 2)
+        self.assertEqual(crash.note_crash(n), 1)
+        self.assertEqual(crash.note_crash(n), 2)
         health.note_quiet_reboot(n)
         self.assertEqual(health.load(n), (2, 1))
         health.note_healthy(n)
@@ -70,13 +71,13 @@ class CountersTest(unittest.TestCase):
         health.note_healthy(n)
         health.clear_quiet(n)
         self.assertEqual(Counting.writes, 0)         # nothing to clear: no flash wear
-        health.note_crash(n)
-        health.note_crash(n)
+        crash.note_crash(n)
+        crash.note_crash(n)
         self.assertEqual(Counting.writes, 2)
 
     def test_damaged_record_reads_as_zero(self):
         n = blank()
-        health.note_crash(n)
+        crash.note_crash(n)
         health.note_quiet_reboot(n)
         for i in range(health.OFFSET, health.OFFSET + 7):
             bad = bytearray(n)
@@ -91,7 +92,7 @@ class CountersTest(unittest.TestCase):
         creds.save("N" * 32, "p" * 63, n)
         stop = {"slug": "x" * 64, "route": "R" * 64, "line": "l" * 64, "direction": "uptown"}
         picks.save([stop, stop], n)
-        health.note_crash(n)
+        crash.note_crash(n)
         self.assertEqual(creds.load(n), ("N" * 32, "p" * 63))
         self.assertEqual(len(picks.load(n)), 2)
         self.assertEqual(health.load(n), (1, 0))
@@ -107,68 +108,68 @@ class CrashEscalationTest(unittest.TestCase):
             self.cleared += 1
 
     def test_levels(self):
-        self.assertEqual([health.escalate(n, 3, 6) for n in (1, 2, 3, 5, 6, 9)],
+        self.assertEqual([crash.escalate(n, 3, 6) for n in (1, 2, 3, 5, 6, 9)],
                          ["none", "none", "stops", "stops", "all", "all"])
 
     def test_repeated_crashes_wipe_state_in_steps_and_start_over(self):
         n = blank()
         p, c = self.Fake(), self.Fake()
-        seen = [health.handle_crash(p, c, 3, 6, n) for _ in range(6)]
+        seen = [crash.handle_crash(p, c, 3, 6, n) for _ in range(6)]
         self.assertEqual(seen, ["none", "none", "stops", "stops", "stops", "all"])
         self.assertEqual((p.cleared, c.cleared), (4, 1))
         self.assertEqual(health.load(n)[0], 0)             # counting starts again from fresh
-        self.assertEqual(health.handle_crash(p, c, 3, 6, n), "none")
+        self.assertEqual(crash.handle_crash(p, c, 3, 6, n), "none")
 
     def test_a_healthy_run_forgets_crashes(self):
         n = blank()
         p, c = self.Fake(), self.Fake()
-        health.handle_crash(p, c, 3, 6, n)
-        health.handle_crash(p, c, 3, 6, n)
+        crash.handle_crash(p, c, 3, 6, n)
+        crash.handle_crash(p, c, 3, 6, n)
         health.note_healthy(n)
-        self.assertEqual(health.handle_crash(p, c, 3, 6, n), "none")
+        self.assertEqual(crash.handle_crash(p, c, 3, 6, n), "none")
         self.assertEqual((p.cleared, c.cleared), (0, 0))
 
     def test_classification(self):
         for e in (MemoryError(), ValueError(), KeyError("k")):
-            self.assertTrue(health.is_data_crash(e), e)
+            self.assertTrue(crash.is_data_crash(e), e)
         for e in (AttributeError(), ImportError(), NameError(), SyntaxError(), TypeError(),
                   OSError(), RuntimeError(), IndexError(), ZeroDivisionError()):
-            self.assertFalse(health.is_data_crash(e), e)
+            self.assertFalse(crash.is_data_crash(e), e)
 
     def test_code_bugs_never_escalate_or_clear(self):
         n = blank()
         p, c = self.Fake(), self.Fake()
         for _ in range(50):
-            self.assertEqual(health.handle_crash(p, c, 3, 6, n, AttributeError("with_names")), "none")
+            self.assertEqual(crash.handle_crash(p, c, 3, 6, n, AttributeError("with_names")), "none")
         self.assertEqual((p.cleared, c.cleared), (0, 0))
         self.assertEqual(health.load(n)[0], 0)
-        self.assertEqual(health.bugs(n), 50)
+        self.assertEqual(crash.bugs(n), 50)
 
     def test_bugs_do_not_reset_or_advance_the_data_count(self):
         n = blank()
         p, c = self.Fake(), self.Fake()
-        health.handle_crash(p, c, 3, 6, n, ValueError())
-        health.handle_crash(p, c, 3, 6, n, TypeError())
+        crash.handle_crash(p, c, 3, 6, n, ValueError())
+        crash.handle_crash(p, c, 3, 6, n, TypeError())
         self.assertEqual(health.load(n)[0], 1)
-        self.assertEqual(health.handle_crash(p, c, 3, 6, n, KeyError("x")), "none")
-        self.assertEqual(health.handle_crash(p, c, 3, 6, n, KeyError("x")), "stops")
+        self.assertEqual(crash.handle_crash(p, c, 3, 6, n, KeyError("x")), "none")
+        self.assertEqual(crash.handle_crash(p, c, 3, 6, n, KeyError("x")), "stops")
 
     def test_healthy_run_forgets_bugs_too(self):
         n = blank()
-        health.note_bug(n)
+        crash.note_bug(n)
         health.note_healthy(n)
-        self.assertEqual(health.bugs(n), 0)
+        self.assertEqual(crash.bugs(n), 0)
 
     def test_hold_grows_and_caps(self):
         steps = (10, 30, 60)
-        self.assertEqual([health.hold_seconds(b, steps) for b in (0, 1, 2, 3, 4, 99)],
+        self.assertEqual([crash.hold_seconds(b, steps) for b in (0, 1, 2, 3, 4, 99)],
                          [10, 10, 30, 60, 60, 60])
 
     def test_clearing_failures_do_not_raise(self):
         class Boom:
             def clear(self):
                 raise OSError("nvm")
-        self.assertEqual(health.handle_crash(Boom(), Boom(), 1, 1, blank()), "all")
+        self.assertEqual(crash.handle_crash(Boom(), Boom(), 1, 1, blank()), "all")
 
 
 if __name__ == "__main__":

@@ -57,7 +57,7 @@ counters (`health.py`, record `HB2`: data-crash count, no-data reboot count, cod
 
 ## Files
 
-`device/health.py` (pure logic + counters), `device/app.py` (backoff, recovery,
+`device/health.py` (liveness logic + NVM counters), `device/crash.py` (crash policy, imported only inside the crash handler to save RAM), `device/app.py` (backoff, recovery,
 scheduled restart), `device/net.py` (cooldown, radio reset, size guard),
 `device/code.py` (crash handler, boot guard), `tests/test_health.py`,
 `tests/test_reliability.py`.

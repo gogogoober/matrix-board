@@ -10,6 +10,7 @@ sys.path.insert(0, ROOT)
 from sim import harness  # noqa: E402,F401  (sets up the fake pins and device path)
 
 import config  # noqa: E402
+import crash  # noqa: E402
 import health  # noqa: E402
 import hw  # noqa: E402
 
@@ -143,7 +144,7 @@ class CodeEntryTest(unittest.TestCase):
         self.accel.script = [OSError("i2c")] * 200
         self.assertEqual(self.run_code(), "Reset")
         self.assertEqual(health.load(self.nvm)[0], 0)      # OSError is not bad saved data
-        self.assertEqual(health.bugs(self.nvm), 1)
+        self.assertEqual(crash.bugs(self.nvm), 1)
         self.assertIn(config.BUG_HOLD_S[0], self.sleeps)   # held before resetting
 
     def test_missing_accelerometer_still_runs_the_sign(self):

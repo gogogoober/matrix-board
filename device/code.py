@@ -9,19 +9,17 @@ import microcontroller
 
 
 def manifest():
-    """One line with the size of every .py file as the board itself sees it, so tools/deploy.py
-    can tell stale or missing files from what macOS shows on the mounted drive."""
+    """One line with the size of every .py file as the board itself sees it, so
+    tools/deploy.py can tell stale or missing files from what macOS shows."""
     try:
-        parts = []
-        for name in sorted(os.listdir("/")):
-            if name.endswith(".py"):
-                parts.append("%s=%d" % (name, os.stat("/" + name)[6]))
-        print("manifest: " + " ".join(parts))
+        print("manifest: " + " ".join("%s=%d" % (n, os.stat("/" + n)[6])
+                                      for n in sorted(os.listdir("/")) if n.endswith(".py") and n[0] != "."))
     except Exception as e:
         print("manifest failed:", type(e).__name__)
 
 
 manifest()   # first, before any import that could fail
+del manifest   # and give its RAM back
 
 import config
 import creds
@@ -116,18 +114,12 @@ try:
     main()
 except Exception as e:   # not KeyboardInterrupt or a reload: those must still work
     # Nothing in here may raise before the reset: a failed diagnostic is not worth a dead sign.
-    try:
-        import sys
-        print("CRASH:", type(e).__name__, e)
-        sys.print_exception(e)
-    except Exception:
-        pass
+    print("CRASH:", type(e).__name__, e)
     hold = 3
     try:
-        print("cleared:", health.handle_crash(picks, creds, config.CRASHES_CLEAR_STOPS,
-                                              config.CRASHES_CLEAR_ALL, None, e))
-        if not health.is_data_crash(e):   # a code bug: wait longer each time so a deploy can finish
-            hold = health.hold_seconds(health.bugs(), config.BUG_HOLD_S)
+        gc.collect()          # the crashed main() is gone: make room for the policy module
+        import crash          # lazily: it is only needed here (RAM)
+        hold = crash.handle(e, picks, creds, config)
     except Exception:
         pass
     print("holding", hold, "s before reset")
