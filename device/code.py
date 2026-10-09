@@ -1,44 +1,104 @@
+"""Entry point. Everything runs inside main(); any crash is counted, printed and
+answered with a hard reset, because a dead program would leave the panel frozen
+on its last frame. See docs/reliability.md."""
 import gc
 import time
 
-import app
+import microcontroller
+
 import config
-import hw
-import model
-import net
+import creds
+import health
 import picks
-import setupui
-import tap
-import ui
-
-display = hw.make_display()
-stops = picks.load() or config.STOPS   # chosen on the setup page, else config.py
-state = model.State(stops)
-screen = ui.Ui(state)
-hw.show(display, screen.group)
-wifi = net.Net()
 
 
-def restart():   # the rows (bullet colours, letters) are built once, so reload to apply new stops
-    import supervisor
-    supervisor.reload()
+def reboot(reason="crash"):
+    if reason == "nodata":
+        health.note_quiet_reboot()   # makes the next no-data reboot wait twice as long
+    microcontroller.reset()          # reset reason SOFTWARE: a normal boot, never safe mode
 
 
-the_app = app.App(state, screen, wifi.get_json, wifi, setupui.SetupScreen(display, screen.group), stops, restart)
-accel = hw.make_accelerometer()
-taps = tap.DoubleTap(config.TAP_ONSET_G)
-gc.collect()
-print("ready: subway sign, mem_free", gc.mem_free())
-if not wifi.has_credentials():   # fresh device: go straight to Wi-Fi setup
-    the_app.enter_setup(time.monotonic())
+def restart():   # the rows (bullet colours, letters) are built once, so reset to apply new stops
+    microcontroller.reset()
 
-last_step = 0.0
-while True:
-    now = time.monotonic()
-    x, y, z = accel.acceleration
-    if taps.update(now, x, y, z):
-        print("double tap")
-        the_app.double_tap(now)
-    if now - last_step >= 0.1:   # the app itself only needs ~10 Hz
-        last_step = now
-        the_app.step(now)
+
+def main():
+    import app
+    import hw
+    import model
+    import net
+    import setupui
+    import tap
+    import ui
+
+    display = hw.make_display()
+    stops = picks.load() or config.STOPS   # chosen on the setup page, else config.py
+    state = model.State(stops)
+    screen = ui.Ui(state)
+    hw.show(display, screen.group)
+    wifi = net.Net()
+    _, quiet = health.load()
+    quiet_seen = quiet
+
+    def on_good():
+        nonlocal quiet_seen
+        if quiet_seen:               # NVM is written only when the counter is not already 0
+            health.clear_quiet()
+            quiet_seen = 0
+
+    the_app = app.App(state, screen, wifi.get_json, wifi, setupui.SetupScreen(display, screen.group),
+                      stops, restart, reboot, on_good, quiet)
+    try:
+        accel = hw.make_accelerometer()
+    except Exception as e:           # no double tap, but the sign still works
+        print("no accelerometer:", type(e).__name__)
+        accel = None
+    taps = tap.DoubleTap(config.TAP_ONSET_G)
+    gc.collect()
+    print("ready: subway sign, mem_free", gc.mem_free())
+    if not wifi.has_credentials():   # fresh device: go straight to Wi-Fi setup
+        the_app.enter_setup(time.monotonic())
+
+    started = time.monotonic()
+    trusted = False
+    last_step = 0.0
+    accel_errors = 0
+    while True:
+        now = time.monotonic()
+        if accel is not None:
+            try:
+                x, y, z = accel.acceleration
+            except Exception:        # an I2C glitch: skip this sample
+                accel_errors += 1
+                if accel_errors > 50:
+                    raise            # persistent: the crash handler restarts
+                time.sleep(0.01)
+            else:
+                accel_errors = 0
+                if taps.update(now, x, y, z):
+                    print("double tap")
+                    the_app.double_tap(now)
+        if now - last_step >= 0.1:   # the app itself only needs ~10 Hz
+            last_step = now
+            the_app.step(now)
+            if not trusted and now - started >= config.HEALTHY_AFTER_S:
+                trusted = True
+                health.note_healthy()   # long enough without a crash: forget earlier ones
+
+
+try:
+    main()
+except Exception as e:   # not KeyboardInterrupt or a reload: those must still work
+    # Nothing in here may raise before the reset: a failed diagnostic is not worth a dead sign.
+    try:
+        import sys
+        print("CRASH:", type(e).__name__, e)
+        sys.print_exception(e)
+    except Exception:
+        pass
+    try:
+        print("cleared:", health.handle_crash(picks, creds, config.CRASHES_CLEAR_STOPS, config.CRASHES_CLEAR_ALL))
+    except Exception:
+        pass
+    time.sleep(3)
+    microcontroller.reset()

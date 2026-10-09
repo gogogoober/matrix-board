@@ -11,7 +11,7 @@ import deploy  # noqa: E402
 # CircuitPython built-ins this project is allowed to use.
 BUILTIN = {
     "time", "gc", "os", "board", "busio", "digitalio", "displayio", "terminalio",
-    "framebufferio", "rgbmatrix", "microcontroller", "json", "math", "supervisor",
+    "framebufferio", "rgbmatrix", "microcontroller", "json", "math", "supervisor", "sys",
 }
 FORBIDDEN = {"typing", "dataclasses", "pathlib", "PIL", "abc", "enum", "functools", "collections.abc"}
 

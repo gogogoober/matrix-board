@@ -34,6 +34,7 @@ class Net:
         self._server = None
         self._dns = None
         self._ap = False
+        self._no_retry_until = 0.0   # after a failed connect, fail fast until then
 
     def credentials(self):
         """(ssid, password) saved by the setup portal, else settings.toml, else None."""
@@ -48,18 +49,31 @@ class Net:
     def has_credentials(self):
         return self.credentials() is not None
 
-    def connect(self, tries=5):
+    def connect(self, tries=None):
         got = self.credentials()
         if not got:
             raise RuntimeError("no wifi credentials (double tap to set up)")
+        if time.monotonic() < self._no_retry_until:
+            raise RuntimeError("wifi down (cooling off)")
         ssid, password = got
-        for _ in range(tries):
+        for _ in range(tries or config.WIFI_CONNECT_TRIES):
             try:
                 self.esp.connect_AP(ssid, password)
                 return
-            except OSError:
+            except Exception:   # OSError, RuntimeError("ESP32 timed out"), ...
                 time.sleep(2)
+        # Blocking again and again while the router is off would stall the sign
+        # for minutes per cycle: fail instantly for a while instead.
+        self._no_retry_until = time.monotonic() + config.WIFI_COOLDOWN_S
         raise RuntimeError("wifi connect failed")
+
+    def reset_radio(self):
+        """Last resort before a reboot: reset the ESP32 and start a fresh HTTP session.
+        The next fetch reconnects."""
+        self._no_retry_until = 0.0
+        self.esp.reset()
+        requests.set_socket(adafruit_esp32spi_socket, self.esp)
+        gc.collect()
 
     # --- setup portal -------------------------------------------------------
 
@@ -140,10 +154,13 @@ class Net:
         if not self.esp.is_connected:
             self.connect()
         gc.collect()
-        r = requests.get(url, timeout=20)
+        r = requests.get(url, timeout=config.HTTP_TIMEOUT_S)
         try:
             if r.status_code != 200:
                 raise RuntimeError("http %d" % r.status_code)
+            size = r.headers.get("content-length")
+            if size and int(size) > config.MAX_RESPONSE_B:
+                raise RuntimeError("response too big")
             return r.json()
         finally:
             r.close()

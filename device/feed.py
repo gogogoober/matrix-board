@@ -43,8 +43,9 @@ def parse_weather(payload):
     for v in (temp, code, hi, lo):
         if isinstance(v, bool) or not isinstance(v, (int, float)):
             raise ValueError("weather value not a number")
-    if not -60 <= temp <= 140:
-        raise ValueError("temperature out of range")
+    for v in (temp, hi, lo):
+        if not -60 <= v <= 140:   # also rejects NaN
+            raise ValueError("temperature out of range")
     if pop is not None and (isinstance(pop, bool) or not isinstance(pop, (int, float))):
         pop = None
     return {

@@ -99,7 +99,8 @@ left on "(keep current Wi-Fi)" to change only stops, and vice versa.
   of `config.STOPS` when valid. The board validates every submission against
   the station files; an unchanged stop keeps its old value.
 - **Applying:** the sign's rows are built once, so after stops change the app
-  shows "STOPS SAVED / RESTARTING" and `supervisor.reload()`s when setup ends.
+  shows "STOPS SAVED / RESTARTING" and the board hard-resets when setup ends
+  (every exit from setup now ends in a reset, see `docs/reliability.md`).
 - **Not yet verified on the board:** streaming `/l/<line>` through the ESP32
   socket, the page's JavaScript in a phone's captive-portal browser, RAM with
   the bigger page (~5.4 KB string), a real submission with 2 stops.

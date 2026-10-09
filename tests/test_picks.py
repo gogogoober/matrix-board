@@ -273,11 +273,16 @@ class AppAppliesPicksTest(unittest.TestCase):
         self.a.double_tap(12.0)
         self.assertEqual(self.restarts, 1)
 
-    def test_no_stop_change_never_restarts(self):
+    def test_any_setup_ends_with_a_fresh_start(self):
         self.a.double_tap(10.0)
         self.wifi.submit = ("HomeNet", "hunter22", None)
         self.a.step(11.0)
         self.a.step(20.0)
+        self.assertEqual(self.restarts, 1)
+
+    def test_no_setup_no_restart(self):
+        for t in range(1, 200, 5):
+            self.a.step(float(t))
         self.assertEqual(self.restarts, 0)
 
 

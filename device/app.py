@@ -10,13 +10,15 @@ them a double tap only flashes the top row.
 """
 import config
 import feed
+import health
 
 RUN, SETUP, NOTICE = 0, 1, 2
 NOTICE_S = 3.0
 
 
 class App:
-    def __init__(self, state, ui, fetch_json, wifi=None, setup_ui=None, stops=None, restart=None):
+    def __init__(self, state, ui, fetch_json, wifi=None, setup_ui=None, stops=None, restart=None,
+                 reboot=None, on_good=None, quiet_reboots=0):
         self.state = state
         self.ui = ui
         self.fetch_json = fetch_json
@@ -25,6 +27,16 @@ class App:
         self.stops = stops if stops is not None else config.STOPS
         self.restart = restart    # called when setup ends after the stops changed (the sign's rows are built once)
         self.restart_pending = False
+        # Reliability (docs/reliability.md). reboot(reason) hard-resets the board:
+        # "nodata" (no good fetch for a long time) or "scheduled". on_good() runs
+        # after a good fetch so persisted counters can be cleared.
+        self.reboot = reboot
+        self.on_good = on_good
+        self.health = None        # started on the first step (needs `now`)
+        self.reboot_after = health.reboot_after(config.REBOOT_AFTER_S, config.REBOOT_AFTER_MAX_S, quiet_reboots)
+        self.started = None
+        self.arr_fails = 0
+        self.wx_fails = 0
         self.next_arrivals = 0.0
         self.next_weather = 0.0
         self.last_error = None
@@ -38,28 +50,45 @@ class App:
 
     def _fetch_arrivals(self, now):
         ok = True
+        any_ok = False
         for slot, stop in zip(self.state.slots, self.stops):
             url = config.ARRIVALS_URL % (stop["slug"], stop.get("line") or stop["route"].lower())
             try:
                 slot.set(feed.parse_arrivals(self.fetch_json(url), stop["direction"], config.TRAINS_STORED), now)
-            except Exception as e:  # keep old data, report, retry sooner
+                any_ok = True
+            except Exception as e:  # keep old data, report, retry later
                 ok = False
                 self.last_error = "%s: %s" % (type(e).__name__, e)
                 print("arrivals error", stop["route"], self.last_error)
-        if ok:
+        if any_ok:
             self.had_data = True
-        self.next_arrivals = now + (config.ARRIVALS_REFRESH_S if ok else config.RETRY_S)
+            self._good(now)
+        if ok:
+            self.arr_fails = 0
+            self.next_arrivals = now + config.ARRIVALS_REFRESH_S
+        else:
+            self.arr_fails += 1   # back off: an API that is down is not hammered
+            self.next_arrivals = now + health.retry_delay(self.arr_fails, config.RETRY_S, config.RETRY_MAX_S)
+        return ok
+
+    def _good(self, now):
+        if self.health is not None:
+            self.health.good(now)
+        if self.on_good is not None:
+            self.on_good()
 
     def _fetch_weather(self, now):
         url = config.WEATHER_URL % (config.LATITUDE, config.LONGITUDE)
         try:
             self.state.set_weather(feed.parse_weather(self.fetch_json(url)), now)
             self.had_data = True
+            self.wx_fails = 0
             self.next_weather = now + config.WEATHER_REFRESH_S
         except Exception as e:
             self.last_error = "%s: %s" % (type(e).__name__, e)
             print("weather error", self.last_error)
-            self.next_weather = now + config.RETRY_S
+            self.wx_fails += 1
+            self.next_weather = now + health.retry_delay(self.wx_fails, config.RETRY_S, config.RETRY_MAX_S)
 
     # --- Wi-Fi setup --------------------------------------------------------
 
@@ -111,6 +140,7 @@ class App:
             self.setup_ui.hide()
 
     def enter_setup(self, now):
+        self.restart_pending = True   # whatever happens in setup, leave it with a fresh start
         self.hint_shown = False
         self.setup_ui.scanning()
         try:
@@ -128,6 +158,8 @@ class App:
         self.setup_ui.hide()
         self.next_arrivals = now   # refresh right away
         self.next_weather = now
+        if self.health is not None:
+            self.health.reset(now)
         self.ui.render(now)
         if self.restart_pending and self.restart is not None:
             self.restart()
@@ -171,6 +203,39 @@ class App:
         except Exception as e:
             self._fail(now, e)
 
+    def _can_recover(self):
+        """Recovery only makes sense when there are Wi-Fi credentials to recover with."""
+        if self.wifi is None:
+            return False
+        has = getattr(self.wifi, "has_credentials", None)
+        return True if has is None else bool(has())
+
+    def _supervise(self, now, fetched_ok):
+        """Liveness: radio reset after RADIO_RESET_AFTER_S without good data, reboot after
+        the (backed-off) REBOOT_AFTER_S, and a planned restart every RESTART_EVERY_S."""
+        if self.reboot is not None and fetched_ok and now - self.started >= config.RESTART_EVERY_S:
+            print("planned restart")
+            self.reboot("scheduled")
+            return
+        if not self._can_recover():
+            self.health.reset(now)   # nothing to recover with: do not count the silence
+            return
+        act = self.health.action(now)
+        if act == health.RADIO:
+            print("no data for", int(self.health.quiet(now)), "s: resetting the radio")
+            reset = getattr(self.wifi, "reset_radio", None)
+            if reset is not None:
+                try:
+                    reset()
+                except Exception as e:
+                    self.last_error = "%s: %s" % (type(e).__name__, e)
+                    print("radio reset error", self.last_error)
+            self.next_arrivals = now    # try again right away on the fresh radio
+        elif act == health.REBOOT and self.reboot is not None:
+            print("no data for", int(self.health.quiet(now)), "s: rebooting")
+            self.health.reset(now)      # in case the reboot hook returns (the simulator)
+            self.reboot("nodata")
+
     def step(self, now):
         """Call about once a second."""
         if self.mode == SETUP:
@@ -180,10 +245,15 @@ class App:
             if now >= self.notice_until:
                 self.leave_setup(now)
             return
+        if self.started is None:
+            self.started = now
+            self.health = health.Health(now, config.RADIO_RESET_AFTER_S, self.reboot_after)
+        fetched_ok = False
         if now >= self.next_arrivals:
-            self._fetch_arrivals(now)
+            fetched_ok = self._fetch_arrivals(now)
         if now >= self.next_weather:
             self._fetch_weather(now)
+        self._supervise(now, fetched_ok)
         self._update_hint(now)
         if not self.hint_shown:
             self.ui.render(now)

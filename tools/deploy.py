@@ -22,9 +22,9 @@ DRIVE = Path("/Volumes/CIRCUITPY")
 
 # Every file that ships to the board (relative to device/). Add app modules here.
 # code.py is last: its write triggers the reload.
-SHIPPED = ["hw.py", "config.py", "feed.py", "model.py", "pixfont.py", "icons.py", "tap.py", "creds.py", "picks.py", "portal.py", "setupui.py", "ui.py", "app.py", "net.py", "code.py"]
+SHIPPED = ["hw.py", "config.py", "feed.py", "model.py", "pixfont.py", "icons.py", "tap.py", "creds.py", "picks.py", "health.py", "portal.py", "setupui.py", "ui.py", "app.py", "net.py", "code.py"]
 # Hardware tests only need the hardware file.
-TEST_NEEDS = ["hw.py", "config.py", "tap.py", "creds.py", "picks.py", "portal.py", "pixfont.py", "setupui.py", "net.py"]
+TEST_NEEDS = ["hw.py", "config.py", "tap.py", "creds.py", "picks.py", "health.py", "portal.py", "pixfont.py", "setupui.py", "net.py"]
 
 
 def wait_for_drive(timeout=30):

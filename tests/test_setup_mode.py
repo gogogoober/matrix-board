@@ -38,7 +38,7 @@ class SetupModeTest(unittest.TestCase):
             a.step(float(t))
             self.assertTrue(shown(), t)
         net.fail = False
-        a.step(400.0)                                              # first good fetch
+        a.step(400.0 + config.RETRY_MAX_S + 1)                     # first good fetch (after the back-off)
         self.assertFalse(shown())
         self.assertFalse(a.hint_shown)
 

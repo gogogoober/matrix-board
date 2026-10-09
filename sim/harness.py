@@ -81,6 +81,7 @@ class FakeWifi:
         self.fail_start = False
         self.submit = None       # (ssid, password, stops) delivered by the next portal_poll
         self.saved_picks = None
+        self.has_creds = True
         self.join_ok = True
         self.calls = []
         self.saved = None
@@ -103,6 +104,12 @@ class FakeWifi:
 
     def portal_stop(self, settle=0.5):
         self.calls.append("stop")
+
+    def has_credentials(self):
+        return self.has_creds
+
+    def reset_radio(self):
+        self.calls.append("reset_radio")
 
     def save_picks(self, stops):
         self.calls.append("save_picks")

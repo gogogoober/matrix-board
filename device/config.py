@@ -40,3 +40,17 @@ PORTAL_IP = "192.168.4.1" # the ESP32 AP address (esp.ip_address is wrong in AP 
 PORTAL_TIMEOUT_S = 600    # setup mode gives up and returns to the sign after this
 PORTAL_DNS = True         # answer every DNS query with the sign (best effort)
 NO_DATA_HINT_S = 30       # after boot, if no data has loaded by now, show how to set up Wi-Fi (boot only)
+
+# Reliability (see docs/reliability.md): the sign must run unattended for a year.
+RETRY_MAX_S = 300           # failed fetches back off 15, 30, 60, 120, 300 s
+HTTP_TIMEOUT_S = 12         # one request never blocks longer than this
+MAX_RESPONSE_B = 20000      # refuse bigger responses before reading them into RAM
+WIFI_CONNECT_TRIES = 3
+WIFI_COOLDOWN_S = 20        # after a failed connect, fetches fail instantly for this long
+RADIO_RESET_AFTER_S = 300   # no good arrivals for this long: reset the ESP32 and reconnect
+REBOOT_AFTER_S = 600        # ...and this long: reboot (doubles each time it did not help)
+REBOOT_AFTER_MAX_S = 3600
+RESTART_EVERY_S = 6 * 3600  # planned restart: float clock precision, heap fragmentation
+HEALTHY_AFTER_S = 120       # running this long without a crash clears the crash count
+CRASHES_CLEAR_STOPS = 3     # consecutive crashes: forget the saved stops
+CRASHES_CLEAR_ALL = 6       # ...and the saved Wi-Fi too (fresh state, setup mode)
