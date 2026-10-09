@@ -21,9 +21,9 @@ and `.venv/bin/python3 sim/run.py`. Deploy with `python3 tools/deploy.py app`.
 tap -> scan -> open AP "Subway LED" -> page at 192.168.4.1 -> join + save in
 NVM (`creds.py`). See `docs/wifi-setup.md` for flow, what is verified on the
 board and what still needs a phone (page over the air, captive DNS).
-**Stop picker built (2026-10-09, laptop-tested, not yet on the board):** same portal
+**Stop picker built and verified on the board with a phone (2026-10-09):** same portal
 page picks two stops from `device/stops/` (see `docs/wifi-setup.md`); saved in NVM
-(`picks.py`), applied by a reload.
+(`picks.py`), applied by a reset.
 **Reliability pass (branch `polish`, 2026-10-09, laptop-tested only; read
 `docs/reliability.md`):** crash handler + reset in `code.py`, liveness checks
 (`health.py`: radio reset at 5 min, reboot at 10 min with back-off), fetch
@@ -31,7 +31,7 @@ back-off, planned restart every 6 h, crash-count wipe of saved stops/Wi-Fi.
 No hardware watchdog on purpose (watchdog/brown-out resets enter safe mode and
 stay dead); `tests/hw/t9_wdt_safe_mode.py` checks that on the board.
 Not yet done: on-panel photo check of the layout, sim-vs-photo fidelity check,
-a wall power supply, board test of the stop picker, direction cue in rows.
+a wall power supply, board test of the reliability pass (t9 watchdog check, recovery paths), direction cue in rows.
 
 ## Open decisions (ask the user before assuming)
 
