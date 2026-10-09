@@ -24,38 +24,41 @@ class SetupModeTest(unittest.TestCase):
     def shown(self):
         return render.render(self.display.root_group)
 
-    def test_hint_after_30s_without_data_then_alternates_and_clears(self):
+    def test_hint_shows_steadily_30s_after_boot_if_no_data_then_clears(self):
         net, wifi, display, screen, a = harness.make_setup()
         net.fail = True
         shown = lambda: display.root_group is a.setup_ui.group
         a.step(0.0)
         a.step(config.NO_DATA_HINT_S - 1)
         self.assertFalse(shown())                                  # not yet
-        t = config.NO_DATA_HINT_S + 1
-        a.step(t)
-        self.assertTrue(shown())                                   # hint
+        a.step(config.NO_DATA_HINT_S + 1)
+        self.assertTrue(shown())
         self.assertGreater(lit(render.render(display.root_group)), 100)
-        a.step(t + config.HINT_ON_S)
-        self.assertFalse(shown())                                  # back to the (stale) sign
-        a.step(t + config.HINT_ON_S + config.HINT_OFF_S)
-        self.assertTrue(shown())                                   # hint again
+        for t in range(40, 400, 7):                                # no alternating: it stays
+            a.step(float(t))
+            self.assertTrue(shown(), t)
         net.fail = False
-        a.step(t + 100)                                            # a fetch works
+        a.step(400.0)                                              # first good fetch
         self.assertFalse(shown())
         self.assertFalse(a.hint_shown)
 
-    def test_no_hint_while_fetches_succeed_or_without_wifi(self):
+    def test_hint_never_comes_back_once_data_has_loaded(self):
         net, wifi, display, screen, a = harness.make_setup()
+        a.step(0.0)                                                # data loads at boot
+        net.fail = True                                            # Wi-Fi dies later
+        for t in range(10, 1000, 10):
+            a.step(float(t))
+            self.assertFalse(a.hint_shown, t)
+        self.assertIs(display.root_group, screen.group)
+
+    def test_no_hint_without_a_wifi_object(self):
+        net, state, screen, a = harness.make()
+        net.fail = True
         for t in range(0, 300, 10):
             a.step(float(t))
         self.assertFalse(a.hint_shown)
-        net2, state, screen2, a2 = harness.make()
-        net2.fail = True
-        for t in range(0, 300, 10):
-            a2.step(float(t))                                      # no wifi object: nothing to hint with
-        self.assertFalse(a2.hint_shown)
 
-    def test_double_tap_from_the_hint_enters_setup_and_leaving_restarts_the_clock(self):
+    def test_leaving_setup_with_no_data_restarts_the_boot_clock(self):
         net, wifi, display, screen, a = harness.make_setup()
         net.fail = True
         a.step(0.0)
@@ -67,6 +70,8 @@ class SetupModeTest(unittest.TestCase):
         self.assertEqual(a.mode, app.RUN)
         a.step(41.0)
         self.assertFalse(a.hint_shown)                             # fresh 30 s
+        a.step(40.0 + config.NO_DATA_HINT_S + 1)
+        self.assertTrue(a.hint_shown)
 
     def test_without_wifi_a_double_tap_still_only_flashes(self):
         net, state, screen, a = harness.make()

@@ -29,7 +29,8 @@ class App:
         self.nets = []
         self.setup_until = 0.0
         self.notice_until = 0.0
-        self.last_ok = None       # last successful fetch (or start of the outage clock)
+        self.had_data = False     # a fetch has worked since boot: the hint is never shown again
+        self.clock_start = None   # when the boot-time NO_DATA_HINT_S countdown began
         self.hint_shown = False
 
     def _fetch_arrivals(self, now):
@@ -43,14 +44,14 @@ class App:
                 self.last_error = "%s: %s" % (type(e).__name__, e)
                 print("arrivals error", stop["route"], self.last_error)
         if ok:
-            self.last_ok = now
+            self.had_data = True
         self.next_arrivals = now + (config.ARRIVALS_REFRESH_S if ok else config.RETRY_S)
 
     def _fetch_weather(self, now):
         url = config.WEATHER_URL % (config.LATITUDE, config.LONGITUDE)
         try:
             self.state.set_weather(feed.parse_weather(self.fetch_json(url)), now)
-            self.last_ok = now
+            self.had_data = True
             self.next_weather = now + config.WEATHER_REFRESH_S
         except Exception as e:
             self.last_error = "%s: %s" % (type(e).__name__, e)
@@ -92,13 +93,13 @@ class App:
         self.setup_ui.portal(config.AP_NAME, ip, notice)
 
     def _update_hint(self, now):
-        """After NO_DATA_HINT_S without a good fetch, alternate the setup hint and the sign."""
+        """Boot-time check only: if no data has loaded NO_DATA_HINT_S after boot,
+        show how to set up Wi-Fi (steadily) until the first fetch works."""
         if self.wifi is None:
             return
-        if self.last_ok is None:
-            self.last_ok = now
-        down = now - self.last_ok - config.NO_DATA_HINT_S
-        want = down >= 0 and down % (config.HINT_ON_S + config.HINT_OFF_S) < config.HINT_ON_S
+        if self.clock_start is None:
+            self.clock_start = now
+        want = not self.had_data and now - self.clock_start >= config.NO_DATA_HINT_S
         if want and not self.hint_shown:
             self.hint_shown = True
             self.setup_ui.hint()
@@ -120,7 +121,7 @@ class App:
         self._stop_portal()
         self.mode = RUN
         self.hint_shown = False
-        self.last_ok = now        # give the connection a fresh NO_DATA_HINT_S
+        self.clock_start = now    # still no data after setup: a fresh NO_DATA_HINT_S
         self.setup_ui.hide()
         self.next_arrivals = now   # refresh right away
         self.next_weather = now

@@ -40,8 +40,9 @@ LINE_COLORS = {
 }
 DEFAULT_LINE = 0x808183
 
-MINUTES_COLOR = 0xFFD000
-STALE = 0x505050
+# Arrival times: white, with the first train brighter (80%) than the second (50%)
+TIME_COLORS = (0xCCCCCC, 0x808080)
+TIME_COLORS_STALE = (0x505050, 0x383838)
 WHITE = 0xFFFFFF
 BLUE = 0x40A0FF
 DIVIDER = 0x303030
@@ -107,7 +108,7 @@ class Ui:
             row = []
             for right in COL_RIGHT:
                 lbl = label.Label(
-                    terminalio.FONT, text="--", color=_sc(STALE),
+                    terminalio.FONT, text="--", color=_sc(TIME_COLORS_STALE[len(row)]),
                     anchor_point=(1.0, 0.5), anchored_position=(right, cy),
                 )
                 self.group.append(lbl)
@@ -148,10 +149,10 @@ class Ui:
         for i, slot in enumerate(self.state.slots):
             age = slot.age(now)
             fresh = age is not None and age <= config.STALE_AFTER_S
-            color = _sc(MINUTES_COLOR if fresh else STALE)
+            colors = TIME_COLORS if fresh else TIME_COLORS_STALE
             shown = slot.shown(now, config.MIN_MINUTES_SHOWN)
             for n in range(2):
-                self._set(self.cols[i][n], column_text(shown, n), color)
+                self._set(self.cols[i][n], column_text(shown, n), _sc(colors[n]))
         self._render_weather(now)
 
     def _render_weather(self, now):
