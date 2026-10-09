@@ -17,8 +17,12 @@ Desktop simulator in `sim/` (real hw.py/ui.py/app.py run against fake pins and
 saved API responses in `tests/fixtures/`, rendered to `out/*.png`).
 Run everything with the venv: `.venv/bin/python3 -m unittest discover -s tests`
 and `.venv/bin/python3 sim/run.py`. Deploy with `python3 tools/deploy.py app`.
+**Wi-Fi setup portal built (branch `wifi-setup-portal`, 2026-10-09):** double
+tap -> scan -> open AP "Subway LED" -> page at 192.168.4.1 -> join + save in
+NVM (`creds.py`). See `docs/wifi-setup.md` for flow, what is verified on the
+board and what still needs a phone (page over the air, captive DNS).
 Not yet done: on-panel photo check of the layout, sim-vs-photo fidelity check,
-a wall power supply, stop editing UI, Wi-Fi setup UI, direction cue in rows.
+a wall power supply, stop editing UI (V2, same portal page), direction cue in rows.
 
 ## Open decisions (ask the user before assuming)
 
@@ -31,7 +35,9 @@ Decided (user, 2026-10-08):
 Still open:
 1. **How stops are entered later** (file over USB, web form served from the
    board, or elsewhere). The buttons are not an option (see below).
-2. **Persisted state:** none planned. Stops/config would be the only data.
+2. **Persisted state:** only the Wi-Fi credentials saved by the setup portal,
+   in `microcontroller.nvm` (not a file: CIRCUITPY is read-only to code while a
+   computer mounts it). NVM wins over `settings.toml`. Stops/config later.
 3. Power supply: still the laptop USB-C port. Wall adapter (5 V, 3 A+) needed
    before anything bright.
 
@@ -58,9 +64,9 @@ Still open:
   (at least one of UP/DOWN is broken), so **the double tap is the app's one
   reliable input.** It is detected in software from the LIS3DH (see "Double tap"
   below), is not a gyro (the chip is an accelerometer only), and works on the
-  board or the panel frame next to it. Currently a double tap only flashes a
-  white line across the top row for 1 s: it proves the input works and is
-  wired to `App.double_tap(now)`, the single place to hang an action.
+  board or the panel frame next to it. A double tap now **enters / leaves Wi-Fi setup mode**
+  (`App.double_tap(now)`); without the Wi-Fi object injected it still just
+  flashes the top row for 1 s (tests rely on that).
   **Candidate actions (none chosen yet):** force an immediate data refresh /
   clear stale data; cycle a view (e.g. the next two trains, show a third
   stop, or a detail screen); briefly show status (IP, signal, last error,
@@ -110,7 +116,8 @@ bottom-right corner with a 1 px black halo cut into the icon. Label rules
 (`feed.pop_label`): never for sun, only above 15% for partly cloudy, always for
 cloud and rain; blue at >= 40%. The row is its own 64x22 bitmap, redrawn only
 when the weather changes. Mockups (not shipped): `sim/weather_mock*.py`.
-RAM after startup is ~80 KB free (printed at boot as `mem_free`).
+RAM after startup is ~61 KB free (printed at boot as `mem_free`; was ~80 KB
+before the setup portal modules, ~57 KB while setup is on screen).
 **API gotcha:** nyc-subway-status route slugs must be lowercase
 (`.../lines/q`); `Q` returns 404. The simulator's fake server is strict about
 this on purpose (regression test `test_every_configured_stop_really_loads`).
@@ -158,6 +165,11 @@ Tuning/diagnostic: `tests/hw/t7_tap_tune.py`.
   starts late misses earlier output.
 - **Verify by looking.** Prove hardware with a photo or the simulator image,
   not just serial output. Tests that pass on garbage are worthless.
+- **AirLift access point (NINA 3.3.0):** the AP starts but `esp.status` stays
+  254, never 7, so `create_AP` raises after its timeout. `Net.portal_start`
+  swallows that unless status is 9. Don't "fix" it by waiting for status 7.
+- **Setup memory:** `portal` is imported lazily and `SetupScreen` allocates its
+  bitmap only while shown; keep it that way (RAM is the scarce resource).
 - Wi-Fi bursts and a weak supply cause flicker/resets: suspect power and shared
   ground before the board.
 

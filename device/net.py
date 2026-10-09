@@ -15,7 +15,8 @@ from adafruit_esp32spi import adafruit_esp32spi, adafruit_esp32spi_socket
 import config
 import creds
 import hw
-import portal
+
+WL_AP_FAILED = 9
 
 
 class Net:
@@ -63,13 +64,21 @@ class Net:
 
     def scan(self):
         """[(ssid, rssi)] of the networks in range. Blocks for a few seconds."""
+        import portal   # only needed (and only paid for in RAM) during setup
         return portal.networks(self.esp.scan_networks())
 
     def portal_start(self, nets):
         """Open access point + web page (+ DNS catch-all). Returns the address to show."""
+        import portal
         self.portal_stop(settle=0)
         self._ap = True   # from here on portal_stop must reset the ESP32
-        self.esp.create_AP(config.AP_NAME, None)
+        try:
+            self.esp.create_AP(config.AP_NAME, None, timeout=2)
+        except OSError:
+            # NINA 3.3.0 starts the AP but never reports "listening" (status stays
+            # 254), so create_AP times out. Only a reported failure (9) is real.
+            if self.esp.status == WL_AP_FAILED:
+                raise
         try:
             ip_bytes = bytes(self.esp.ip_address)
             ip = self.esp.pretty_ip(ip_bytes)

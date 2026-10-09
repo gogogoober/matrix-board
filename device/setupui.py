@@ -2,6 +2,8 @@
 one 64x64 bitmap. Swaps the display's root group; hide() restores the sign.
 No network, no business state.
 """
+import gc
+
 import displayio
 
 import hw
@@ -19,14 +21,20 @@ class SetupScreen:
     def __init__(self, display, main_group):
         self.display = display
         self.main = main_group
-        self.bitmap = displayio.Bitmap(hw.WIDTH, hw.HEIGHT, len(COLORS))
-        palette = displayio.Palette(len(COLORS))
-        for i, rgb in enumerate(COLORS):
-            palette[i] = hw.scale(rgb)
-        self.group = displayio.Group()
-        self.group.append(displayio.TileGrid(self.bitmap, pixel_shader=palette))
+        self.bitmap = None   # built on first use and freed by hide(): ~2 KB of RAM
+        self.group = None
+
+    def _ensure(self):
+        if self.bitmap is None:
+            self.bitmap = displayio.Bitmap(hw.WIDTH, hw.HEIGHT, len(COLORS))
+            palette = displayio.Palette(len(COLORS))
+            for i, rgb in enumerate(COLORS):
+                palette[i] = hw.scale(rgb)
+            self.group = displayio.Group()
+            self.group.append(displayio.TileGrid(self.bitmap, pixel_shader=palette))
 
     def _text(self, s, y, color, k=1, font=pixfont.GLYPHS):
+        self._ensure()
         s = "".join(ch for ch in s.upper() if ch in font)
         pixfont.draw_text(self.bitmap, s, _center_x(s, k, font), y, color, font, k)
 
@@ -35,9 +43,13 @@ class SetupScreen:
 
     def hide(self):
         hw.show(self.display, self.main)
+        self.bitmap = None
+        self.group = None
+        gc.collect()
 
     def message(self, line1, line2=None, color=YELLOW):
         """Centred one- or two-line status page."""
+        self._ensure()
         self.bitmap.fill(BLACK)
         y = 24 if line2 else 29
         self._text(line1, y, color)
@@ -59,6 +71,7 @@ class SetupScreen:
 
     def portal(self, name, ip, notice=None):
         """The instructions page: network name big, then the address to open."""
+        self._ensure()
         self.bitmap.fill(BLACK)
         self._text("WI-FI SETUP", 1, YELLOW)
         self._text("JOIN WI-FI", 8, DIM)

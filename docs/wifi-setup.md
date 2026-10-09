@@ -38,24 +38,38 @@ phone, pick your network, type its password, and the sign joins it.
 | Layers | `portal.py` (pure helpers + server over an `esp` object), `creds.py`, `setupui.py` (screens), `net.py` (hardware facade), `app.py` (mode switching only) | Same rules as the rest of the project: portal and app are testable on the laptop with fakes. |
 | Where does the password go? | Never printed, never in the repo, never in the UI | CLAUDE.md rule. |
 
-## Known limits / unverified on hardware
+## Verified on the board (2026-10-09, CircuitPython 8.0.5, NINA 3.3.0)
 
-Everything below the ESP socket calls is covered by laptop tests with a fake
-ESP. The following can only be proven on the board with a phone; the test
-`tests/hw/t8_ap_portal.py` exists to answer each one (and it logs to
-`docs/pin-map.md`-style bench notes).
+Tests `t8_ap_portal`, `t8b_ap_probe`, `t8c_app_setup` (no phone needed):
 
-1. **Open AP**: does `create_AP(name, None)` create an open network on NINA
-   3.3.0 with the board's library? (Library source says yes.)
-2. **AP IP**: assumed `192.168.4.1` (ESP default). The code reads it back and
-   falls back to that value if the ESP reports `0.0.0.0`.
-3. **Captive-portal DNS** (the "every website routes to the page" part): a
-   UDP:53 listener answers every `A` query with the AP address. This depends
-   on (a) the ESP's DHCP server handing out the AP as DNS, and (b) UDP replies
-   going back to the sender through the NINA socket commands. Both are
-   unconfirmed. It is wrapped so any failure turns DNS off and the page still
-   works at `192.168.4.1`. If DNS does not work, phones may say "no internet"
-   (Android may offer to leave the network: choose to stay).
+- Scan: 17 to 20 networks in 5.5 to 5.9 s.
+- The open AP **is created**: a Mac scan sees a new `Security: None` 2.4 GHz
+  network (channel 1) while it runs and none after the ESP32 is reset.
+- **Gotcha:** NINA 3.3.0 never reports "AP listening". `esp.status` stays 254
+  (stopped), so the library's `create_AP` times out and raises `OSError`
+  although the AP is up. `Net.portal_start` catches that and only treats
+  status 9 (AP failed) as an error.
+- `esp.ip_address` / fallback gives `192.168.4.1`; the HTTP server socket and
+  the UDP:53 socket both start without errors.
+- RAM (real app, `t8c`): 67 KB free before setup, 57 KB with the portal up,
+  60 KB after leaving (the portal module stays imported). Normal-sign RAM
+  after startup is now ~61 KB (was ~80 KB): the new modules cost ~18 KB, so
+  `portal` is imported lazily and the setup bitmap exists only while shown.
+- Leaving setup (second double tap) resets the ESP32 and the sign carries on.
+
+## Still unverified: needs a phone
+
+1. A phone can join the open network and `http://192.168.4.1` loads the page
+   (`t8` prints `requests=` going up).
+2. **Captive-portal DNS** ("every website routes to the page"): a UDP:53
+   listener answers every `A` query with the AP address. Depends on the ESP's
+   DHCP server handing out the AP as DNS and on UDP replies reaching the
+   sender through the NINA socket commands. `t8` prints `dns=<answered>`; if it
+   stays 0 while you open a random website, DNS does not work and phones will
+   say "no internet" (Android may offer to leave the network: stay). Typing
+   `192.168.4.1` always works. Failures turn DNS off by themselves.
+3. The form POST arrives, the join succeeds and the credentials survive a
+   power cycle (`t8` joins and saves; reboot and check the sign fetches data).
 4. Taps during the 2 to 10 s scan and join are missed (blocking calls).
 5. 2.4 GHz networks only; no WPA-Enterprise or sign-in-page networks.
 
@@ -78,3 +92,4 @@ station list; use a short curated list or a search call made while joined).
 | `device/app.py` | RUN / SETUP / NOTICE modes, double-tap routing |
 | `tests/test_portal.py`, `tests/test_setup_mode.py` | laptop tests |
 | `tests/hw/t8_ap_portal.py` | on-board proof with a phone |
+| `tests/hw/t8b_ap_probe.py`, `t8c_app_setup.py` | AP variants probe; real app forced into setup with RAM report |
