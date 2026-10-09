@@ -27,6 +27,7 @@ TRAINS_STORED = 6         # fetched per stop, so there is always one to skip to
 
 ARRIVALS_REFRESH_S = 300  # one fetch per 5 min; the sign counts down locally in between (model.Slot.shown), each fetch overwrites
 WEATHER_REFRESH_S = 1800  # one small call; the sign redraws temperature, range and icon from it
+WEATHER_FIRST_S = 20      # first weather fetch this long after boot: not in the same burst as the arrivals, and never lined up with them later
 RETRY_S = 15              # after a failed fetch
 STALE_AFTER_S = 480       # dim the numbers when data is older than this (one missed 5-min fetch is fine)
 TAP_ONSET_G = 0.5         # a bump counts as a tap above this change in g (your taps: 0.8 to 3 g)

@@ -116,10 +116,30 @@ class BackoffTest(unittest.TestCase):
     def test_weather_backs_off_too(self):
         r = Rig()
         r.net.fail = True
-        r.a.step(0.0)
-        r.a.step(float(config.RETRY_S))
+        t0 = float(config.WEATHER_FIRST_S)
+        r.a.step(t0)
+        r.a.step(t0 + config.RETRY_S)
         self.assertGreaterEqual(r.a.wx_fails, 2)
-        self.assertGreaterEqual(r.a.next_weather - config.RETRY_S, 2 * config.RETRY_S - 1)
+        self.assertGreaterEqual(r.a.next_weather - t0 - config.RETRY_S, 2 * config.RETRY_S - 1)
+
+    def test_boot_fetches_arrivals_first_and_weather_in_a_later_step(self):
+        r = Rig()
+        r.a.step(0.0)
+        self.assertEqual(len([u for u in r.net.calls if "open-meteo" in u]), 0)
+        self.assertEqual(len([u for u in r.net.calls if "/stops/" in u]), 2)
+        r.a.step(float(config.WEATHER_FIRST_S))
+        self.assertEqual(len([u for u in r.net.calls if "open-meteo" in u]), 1)
+
+    def test_weather_never_shares_a_step_with_the_arrivals_cycle(self):
+        r = Rig()
+        both = 0
+        for t in range(0, 4 * 3600):
+            a, w = len(r.net.calls), None
+            r.a.step(float(t))
+            new = r.net.calls[a:]
+            if any("open-meteo" in u for u in new) and any("/stops/" in u for u in new):
+                both += 1
+        self.assertEqual(both, 0)
 
 
 class LivenessTest(unittest.TestCase):

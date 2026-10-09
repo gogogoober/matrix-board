@@ -38,7 +38,7 @@ class App:
         self.retrying = False     # the last round had a failure: stops that are still fresh are not fetched again
         self.wx_fails = 0
         self.next_arrivals = 0.0
-        self.next_weather = 0.0
+        self.next_weather = config.WEATHER_FIRST_S
         self.last_error = None
         self.mode = RUN
         self.nets = []
