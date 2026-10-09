@@ -53,7 +53,8 @@ class App:
         for slot, stop in zip(self.state.slots, self.stops):
             url = config.ARRIVALS_URL % (stop["slug"], stop.get("line") or stop["route"].lower())
             try:
-                minutes = feed.parse_arrivals(self.fetch_json(url), stop["direction"], config.TRAINS_STORED)
+                direction = stop["direction"]
+                minutes = self.fetch_json(url, lambda j: feed.parse_arrivals(j, direction, config.TRAINS_STORED))
                 if not minutes:
                     raise ValueError("no arrivals")   # empty 200 = failed fetch: keep old data
                 slot.set(minutes, now)
@@ -82,7 +83,7 @@ class App:
     def _fetch_weather(self, now):
         url = config.WEATHER_URL % (config.LATITUDE, config.LONGITUDE)
         try:
-            self.state.set_weather(feed.parse_weather(self.fetch_json(url)), now)
+            self.state.set_weather(self.fetch_json(url, feed.parse_weather), now)
             self.had_data = True
             self.wx_fails = 0
             self.next_weather = now + config.WEATHER_REFRESH_S

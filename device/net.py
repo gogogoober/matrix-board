@@ -150,7 +150,10 @@ class Net:
             print("could not save wifi:", type(e).__name__)
         return True
 
-    def get_json(self, url):
+    def get_json(self, url, parse=None):
+        """GET url and return parse(json). The payload (several times its size once parsed)
+        is dropped inside, so the collect in `finally` really frees it; only the small
+        parsed result outlives the call. parse=None returns the raw JSON."""
         if not self.esp.is_connected:
             self.connect()
         gc.collect()
@@ -161,7 +164,9 @@ class Net:
             size = r.headers.get("content-length")
             if size and int(size) > config.MAX_RESPONSE_B:
                 raise RuntimeError("response too big")
-            return r.json()
+            data = r.json()
+            return data if parse is None else parse(data)
         finally:
+            data = None
             r.close()
             gc.collect()
