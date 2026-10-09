@@ -10,7 +10,6 @@ from sim import harness, render  # noqa: E402
 
 import config  # noqa: E402
 import hw  # noqa: E402
-import icons  # noqa: E402
 import ui  # noqa: E402
 
 BLACK = (0, 0, 0)
@@ -248,94 +247,22 @@ class DividerTest(unittest.TestCase):
             assert_lanes(self, c)
 
 
-class WeatherAnimationTest(unittest.TestCase):
-    def run_idle(self, kind):
-        _, state, screen, _ = make(kind)
-        rest = render.render(screen.group)
-        screen.start_idle(10.0)
-        got = list(frames(screen, 10.0, icons.steps(kind) * config.WX_STEP_S + 0.5, dt=0.05))
-        return screen, rest, got
+class WeatherIsStaticTest(unittest.TestCase):
+    def test_the_icon_never_moves(self):
+        for kind in ("sun", "cloud", "rain"):
+            _, state, screen, _ = make(kind)
+            rest = render.render(screen.group)
+            self.assertFalse(hasattr(screen, "start_idle"))
+            for _, c in frames(screen, 10.0, 2.0):
+                self.assertEqual(c[43:], rest[43:], kind)
 
-    ANIMATED = ("cloud", "rain")
-
-    def test_every_frame_stays_inside_its_lane(self):
-        for kind in self.ANIMATED:
-            screen, rest, got = self.run_idle(kind)
-            for t, c in got:
-                assert_lanes(self, c)
-                for y in range(43, 64):    # the temperatures never move
-                    for x in range(0, 20):
-                        self.assertEqual(c[y][x], rest[y][x], "%s: temperature changed" % kind)
-
-    def test_the_icon_really_moves_then_returns_to_rest(self):
-        for kind in self.ANIMATED:
-            screen, rest, got = self.run_idle(kind)
-            distinct = {repr(c[43:]) for _, c in got}
-            self.assertGreater(len(distinct), 1 if kind == "cloud" else 3, kind + " did not animate")
-            self.assertEqual(got[-1][1], rest, kind + " did not come back to rest")
-
-    def test_the_sun_never_animates(self):
-        _, state, screen, _ = make("sun")
-        rest = render.render(screen.group)
-        screen.start_idle(10.0)
-        for _, c in frames(screen, 10.0, 2.0):
-            self.assertEqual(c, rest)
-
-    def test_the_cloud_drifts_one_pixel_right(self):
-        screen, rest, got = self.run_idle("cloud")
-
-        def left_edge(c):
-            return min(x for y in range(43, 64) for x in range(40, 64) if c[y][x] == CLOUD)
-        self.assertEqual(max(left_edge(c) for _, c in got), left_edge(rest) + 1)
-
-    def test_a_train_leaving_makes_rain_fall_but_does_not_move_the_cloud(self):
-        _, state, screen, _ = make("rain")
-        rest = render.render(screen.group)
-
-        def cloud_pixels(c):
-            return {(x, y) for y in range(43, 64) for x in range(40, 64) if c[y][x] == CLOUD}
-        first_train_left(state, screen, 10.0)
-        got = list(frames(screen, 10.0, 2.6))
-        for _, c in got:
-            self.assertEqual(cloud_pixels(c), cloud_pixels(rest))
-        self.assertGreater(len({repr(c[43:]) for _, c in got}), 3)
-        self.assertEqual(got[-1][1][43:], rest[43:])
-
-    def test_a_plain_countdown_does_not_make_it_rain(self):
-        _, state, screen, _ = make("rain")
-        rest = render.render(screen.group)
-        feed(state, screen, 10.0, COUNTDOWN)
-        for _, c in frames(screen, 10.0, 2.0):
-            self.assertEqual(c[43:], rest[43:])
-
-    def test_a_train_leaving_leaves_a_sun_alone(self):
-        _, state, screen, _ = make("sun")
-        rest = render.render(screen.group)
-        first_train_left(state, screen, 10.0)
-        for _, c in frames(screen, 10.0, 2.0):
-            self.assertEqual(c[43:], rest[43:])
-
-    def test_resting_pictures_are_unchanged_by_the_animation_code(self):
-        import displayio
-        for kind in ("sun", "partly", "cloud", "rain"):
-            a = displayio.Bitmap(40, 22, 8)
-            b = displayio.Bitmap(40, 22, 8)
-            icons.draw(a, kind, 5, 3, 1, 2, 3)
-            icons.draw(b, kind, 5, 3, 1, 2, 3, None, True)
-            self.assertEqual([a[x, y] for y in range(22) for x in range(40)],
-                             [b[x, y] for y in range(22) for x in range(40)])
-
-    def test_new_weather_data_cancels_a_running_animation(self):
-        _, state, screen, _ = make("rain")
-        screen.start_idle(10.0)
-        screen.animate(10.35)
-        state.set_weather(WEATHER["sun"], 10.4)
-        screen.render(10.4)
-        screen.animate(10.5)
-        fresh = render.render(make("sun")[2].group)
-        c = render.render(screen.group)
-        assert_lanes(self, c)
-        self.assertEqual(c[43:], fresh[43:])       # the sun, at rest; no leftover rain
+    def test_a_train_leaving_leaves_the_icon_alone(self):
+        for kind in ("sun", "cloud", "rain"):
+            _, state, screen, _ = make(kind)
+            rest = render.render(screen.group)
+            first_train_left(state, screen, 10.0)
+            for _, c in frames(screen, 10.0, 2.6):
+                self.assertEqual(c[43:], rest[43:], kind)
 
 
 class AppWiringTest(unittest.TestCase):
@@ -349,19 +276,6 @@ class AppWiringTest(unittest.TestCase):
         a.enter_setup(2.0)
         a.frame(3.0)
         self.assertEqual(calls, [1.0])
-
-    def test_idle_timer_plays_the_weather_animation(self):
-        net, state, screen, a = harness.make()
-        calls = []
-        screen.start_idle = calls.append
-        a.step(0.0)
-        self.assertEqual(calls, [])                      # not at boot
-        a.step(config.IDLE_ANIM_S - 1)
-        self.assertEqual(calls, [])
-        a.step(config.IDLE_ANIM_S + 1)
-        self.assertEqual(calls, [config.IDLE_ANIM_S + 1])
-        a.step(config.IDLE_ANIM_S + 2)
-        self.assertEqual(len(calls), 1)                  # then waits a full period
 
 
 if __name__ == "__main__":

@@ -321,16 +321,22 @@ class AppSimTest(unittest.TestCase):
         _, c = self._weather(0, 0, hi=100, lo=-5)
         self.assertEqual(len(c), 64)
 
-    def test_pop_label_cuts_into_icon_with_a_dark_halo(self):
+    def test_pop_label_is_blue_sits_on_the_cloud_base_and_hides_under_15(self):
+        blue = tuple((hw.scale(ui.DROP) >> sh) & 255 for sh in (16, 8, 0))
+        cloud = tuple((hw.scale(ui.CLOUD) >> sh) & 255 for sh in (16, 8, 0))
         _, with_pop = self._weather(3, 25)      # cloud, label "25%"
-        _, without = self._weather(3, None)     # cloud, no label
-        lit = lambda c, x0, y0, x1, y1: sum(
-            1 for y in range(y0, y1) for x in range(x0, x1) if c[y][x] != (0, 0, 0))
-        self.assertEqual(lit(without, 49, 57, 64, 64), 0)    # corner is empty without it
-        self.assertGreater(lit(with_pop, 49, 57, 64, 64), 10)  # label drawn in the corner
-        self.assertEqual(with_pop[63][49], (0, 0, 0))        # dark halo column beside it
-        # the icon above the label is exactly the same size/shape either way
-        self.assertEqual([r[44:60] for r in with_pop[45:56]], [r[44:60] for r in without[45:56]])
+        _, zero = self._weather(3, 0)           # cloud, no label
+        _, low = self._weather(3, 14)
+        self.assertEqual(zero, low)
+        lit = lambda c, col: [(x, y) for y in range(42, 64) for x in range(40, 64) if c[y][x] == col]
+        self.assertEqual(lit(zero, blue), [])
+        ys = [y - 42 for _, y in lit(with_pop, blue)]
+        self.assertTrue(ys)
+        self.assertEqual((min(ys), max(ys)), (13, 17))
+        # no cloud pixel below the label's last row, in either picture
+        for c in (with_pop, zero):
+            self.assertEqual(max(y - 42 for _, y in lit(c, cloud)), 17)
+        self.assertEqual([r[63] for r in with_pop[42 + 13:42 + 18]], [r[63] for r in zero[42 + 13:42 + 18]])
 
     def test_columns_are_right_aligned(self):
         """1-digit and 2-digit numbers end at the same x in the same column."""

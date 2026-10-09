@@ -78,13 +78,6 @@ def main():
     save_gif("anim_slide.gif", canvases)
     save_strip("anim_slide_strip.png", canvases[:36:3], per_row=6, crop=(0, 0, 64, 42))
 
-    for kind in WEATHER:
-        state, screen = scene(kind)
-        screen.start_idle(10.0)
-        canvases = record(screen, 10.0, 2.2)
-        save_gif("anim_%s.gif" % kind, canvases)
-        save_strip("anim_%s_strip.png" % kind, canvases[::5][:12], per_row=6, crop=(30, 40, 64, 64))
-
 
 if __name__ == "__main__":
     main()

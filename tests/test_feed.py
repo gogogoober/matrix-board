@@ -62,13 +62,11 @@ class WeatherTest(unittest.TestCase):
         self.assertEqual(feed.weather_kind(3, 39), "cloud")
 
     def test_pop_label_rules(self):
-        self.assertIsNone(feed.pop_label("sun", 80))          # never for sun
-        self.assertIsNone(feed.pop_label("partly", 10))       # hidden low
-        self.assertIsNone(feed.pop_label("partly", 15))       # 15 is not above 15
-        self.assertEqual(feed.pop_label("partly", 16), "16%")
-        self.assertEqual(feed.pop_label("cloud", 0), "0%")    # always for cloud
-        self.assertEqual(feed.pop_label("rain", 80), "80%")
-        self.assertIsNone(feed.pop_label("rain", None))
+        self.assertIsNone(feed.pop_label(0))            # never a "0%"
+        self.assertIsNone(feed.pop_label(14))
+        self.assertEqual(feed.pop_label(15), "15%")     # 15 and up
+        self.assertEqual(feed.pop_label(80), "80%")
+        self.assertIsNone(feed.pop_label(None))
 
 
 if __name__ == "__main__":

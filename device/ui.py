@@ -13,7 +13,7 @@ Layout (64x64): three rows, heights 21/21/22, dotted dividers.
                 white tick where the temperature is now; rain chance in the
                 bottom-right corner only when it matters
 Built once; render() only changes label text/colour. animate(now) (called by the main
-loop every config.ANIM_FRAME_S) slides the times and plays the weather icon animation;
+loop every config.ANIM_FRAME_S) slides the times (the weather icon is static);
 see docs/animations.md.
 """
 import displayio
@@ -80,6 +80,7 @@ W_BLACK, W_WHITE, W_HI, W_LO, W_SUN, W_CLOUD, W_DROP, W_DIM = range(8)
 BAR_Y = 15      # weather bitmap row of the range bar (2 px tall); the numbers and tick are around it
 NUM_Y = 13      # top of the small low/high numbers (5 tall)
 HI_RIGHT = 38   # right edge of the high number: the icon's columns (ICON_X0) stay clear
+LABEL_Y = 13   # weather bitmap row of the label's top (it is 5 tall: ends on the cloud's base row 17)
 W_Y = 42   # screen row where the weather bitmap starts
 W_H = 22
 
@@ -219,11 +220,8 @@ class Ui:
         self.flash_tile.hidden = True
         self.group.append(self.flash_tile)
         self._flash_until = 0.0
-        self.weather_view = None   # what is drawn now: (hi, lo, kind, pop_label) or None
+        self.weather_view = None   # what is drawn now: (hi, lo, kind, pop_label, temp) or None
         self._weather_drawn = False
-        self._wx_t0 = None         # start of the running icon animation, or None
-        self._wx_drift = True      # whether that animation also moves the cloud
-        self._wx_step = None       # icon frame on the bitmap now (None = resting picture)
 
     def flash(self, now, seconds):
         self._flash_until = now + seconds
@@ -278,13 +276,11 @@ class Ui:
                 self._set_texts(i, texts)
             return
         if self.texts[i] == ("--", "--") and texts != ("--", "--"):
-            self._start_rain(now)       # first data: nothing to send away, just arrive
             self._place(i, SLIDE)
             self._set_texts(i, texts)
             self._phase[i] = IN
             self._t0[i] = now + i * config.SLIDE_ROW_DELAY_S
         elif old_first is not None and first is not None and first >= old_first + SHIFT_MIN:
-            self._start_rain(now)
             self._phase[i] = OUT
             self._t0[i] = now + i * config.SLIDE_ROW_DELAY_S
         else:
@@ -317,40 +313,6 @@ class Ui:
             else:
                 self._place(i, 0)
                 self._phase[i] = IDLE
-        self._animate_weather(now)
-
-    # --- weather icon animation ---------------------------------------------
-
-    def _kind(self):
-        return None if self.weather_view is None else self.weather_view[2]
-
-    def _start_rain(self, now):
-        """A data refresh: only rain reacts (the drops fall), the cloud stays put."""
-        if self._kind() == "rain":
-            self._wx_t0 = now
-            self._wx_drift = False
-
-    def start_idle(self, now):
-        """The idle timer: shimmer the sun, drift the cloud, let the rain fall."""
-        kind = self._kind()
-        if kind is not None and icons.steps(kind):
-            self._wx_t0 = now
-            self._wx_drift = True
-
-    def _animate_weather(self, now):
-        if self._wx_t0 is None or now < self._wx_t0:
-            return
-        kind = self._kind()
-        step = None
-        if kind is not None:
-            step = int((now - self._wx_t0) / config.WX_STEP_S)
-            if step >= icons.steps(kind):
-                step = None
-        if step is None:
-            self._wx_t0 = None      # finished: repaint the resting picture below
-        if step != self._wx_step:
-            self._wx_step = step
-            self._paint_icon(step)
 
     def _render_weather(self, now):
         wx = self.state.weather
@@ -359,13 +321,11 @@ class Ui:
         else:
             kind = feed.weather_kind(wx["code"], wx["pop"], config.RAIN_ICON_POP)
             view = (wx["hi"], wx["lo"], kind,
-                    feed.pop_label(kind, wx["pop"], config.PARTLY_POP_MIN), wx["temp"])
+                    feed.pop_label(wx["pop"], config.LABEL_POP_MIN), wx["temp"])
         if self._weather_drawn and view == self.weather_view:
             return   # static: only redraw when something changed
         self.weather_view = view
         self._weather_drawn = True
-        self._wx_t0 = None
-        self._wx_step = None
         b = self.wbitmap
         b.fill(W_BLACK)
         if view is None:
@@ -375,7 +335,7 @@ class Ui:
         # centred on the bullet column: two digits span exactly the circle's width
         pixfont.draw_big_centered(b, "%d" % temp, BULLET_X, 1, W_WHITE)
         self._draw_range(hi, lo, temp)
-        self._draw_icon(None)
+        self._draw_icon()
 
     def _draw_range(self, hi, lo, temp):
         """Low number, bar (blue half, orange half), high number; a white tick on the bar
@@ -398,18 +358,14 @@ class Ui:
         for y in range(BAR_Y - 2, BAR_Y + 4):
             b[tx, y] = W_WHITE
 
-    def _draw_icon(self, step):
-        """Icon and rain-chance label, resting (step None) or one animation frame."""
-        kind, pop = self.weather_view[2], self.weather_view[3]
-        icons.draw(self.wbitmap, kind, 45, 1, W_SUN, W_CLOUD, W_DROP, step, self._wx_drift)
+    def _draw_icon(self):
+        """Icon and, from LABEL_POP_MIN up, the blue rain-chance label on its last rows."""
+        b = self.wbitmap
+        icons.draw(b, self.weather_view[2], W_SUN, W_CLOUD, W_DROP)
+        pop = self.weather_view[3]
         if pop is not None:
             x = hw.WIDTH - 1 - pixfont.text_width(pop)
-            pixfont.draw_halo(self.wbitmap, pop, x, 16,
-                              W_DROP if self.state.weather["pop"] >= config.RAIN_ICON_POP else W_WHITE)
-
-    def _paint_icon(self, step):
-        b = self.wbitmap
-        for y in range(1, W_H):   # row 0 is the gap under the divider: never drawn on
-            for x in range(ICON_X0, hw.WIDTH):
-                b[x, y] = W_BLACK
-        self._draw_icon(step)
+            for y in range(LABEL_Y - 1, LABEL_Y + 5):      # one dark row above, one column left
+                for xx in range(x - 1, hw.WIDTH - 1):
+                    b[xx, y] = W_BLACK
+            pixfont.draw_text(b, pop, x, LABEL_Y, W_DROP)

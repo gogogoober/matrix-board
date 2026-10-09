@@ -69,14 +69,8 @@ def weather_kind(code, pop, rain_pop=40):
     return "cloud"
 
 
-def pop_label(kind, pop, partly_min=15):
-    """'30%' when the rain chance is worth showing, else None.
-
-    Never for sun; for partly cloudy only above partly_min; always for cloud
-    and rain (when known).
-    """
-    if pop is None or kind == "sun":
-        return None
-    if kind == "partly" and pop <= partly_min:
+def pop_label(pop, min_pop=15):
+    """'30%' when the rain chance is min_pop or more, else None (never a '0%')."""
+    if pop is None or pop < min_pop:
         return None
     return "%d%%" % pop

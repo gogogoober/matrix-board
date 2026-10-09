@@ -115,12 +115,3 @@ def draw_big_centered(bitmap, s, cx, y, color, max_width=19, rows=(2, 2, 2, 2, 2
             top += rows[r]
         x += 9
 
-
-def draw_halo(bitmap, s, x, y, color, halo=0, gap=1):
-    """Text with a 1 px halo of colour index `halo` cut into what is behind it."""
-    def cut(c, px, py):
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                _put(bitmap, px + dx, py + dy, c)
-    _walk(s, x, y, 1, gap, cut, halo)
-    draw(bitmap, s, x, y, color, 1, gap)

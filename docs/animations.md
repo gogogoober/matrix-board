@@ -1,3 +1,5 @@
+> **Superseded for the weather icon (2026-10-09):** the icon is now static (no drift, no falling rain, no idle timer, no `start_idle`/`steps`/`WX_STEP_S`/`IDLE_ANIM_S`). Only the sliding times below still apply.
+
 # Animations
 
 Added 2026-10-09 on branch `worktree-led-animations` (laptop-tested, **not yet on the board**).

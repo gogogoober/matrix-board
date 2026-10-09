@@ -32,17 +32,15 @@ STALE_AFTER_S = 480       # dim the numbers when data is older than this (one mi
 TAP_ONSET_G = 0.5         # a bump counts as a tap above this change in g (your taps: 0.8 to 3 g)
 TAP_FLASH_S = 1.0         # how long the white top-row flash stays on
 RAIN_ICON_POP = 40        # rain chance (%) at which the icon becomes rain
-PARTLY_POP_MIN = 15       # partly cloudy shows the % only above this
+LABEL_POP_MIN = 15        # the blue rain-chance % shows from this up, for every icon
 
 # Animations (docs/animations.md). When arrivals change, a row's two times slide off to the
-# left and the new ones slide in from the right; the weather icon has a short idle animation
-# on a plain timer. Everything else on the panel stays still.
+# left and the new ones slide in from the right; the weather icon never animates.
+# Everything else on the panel stays still.
 ANIM_FRAME_S = 0.04       # main loop advances animations this often (25 Hz)
 SLIDE_OUT_S = 0.38        # old times leave to the left
 SLIDE_IN_S = 0.52         # new times arrive from the right
 SLIDE_ROW_DELAY_S = 0.14  # row 2 starts this long after row 1
-WX_STEP_S = 0.1           # one step of an icon animation (sun rays, cloud drift, rain)
-IDLE_ANIM_S = 15          # weather icon idle animation every this many seconds
 
 # Wi-Fi setup portal (double tap). See docs/wifi-setup.md.
 AP_NAME = "Subway LED"    # open network the sign creates; keep it short (shown on the panel)

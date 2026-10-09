@@ -1,29 +1,14 @@
-"""Weather icons drawn into a Bitmap by colour index. About 16x14 px.
+"""Weather icons drawn into a Bitmap by colour index. Static: nothing here animates.
 
-Colours are palette indices chosen by the caller (see ui.py).
-
-draw(..., step=None) is the resting picture. step = 0, 1, 2... is one frame of a
-short animation (steps(kind) frames, WX_STEP_S apart); the last frame leads back to
-the resting picture. No frame draws a pixel more than 1 px from the resting picture
-(the cloud drifts 1 px, the rain falls inside its own rows), so the caller can keep the
-divider clear.
+draw(b, kind, c_sun, c_cloud, c_drop) paints into the icon's columns (x=40..63) of the
+64x22 weather bitmap. The cloud is 17 px wide and 11 tall with a flat, rounded-corner
+base; cloudy and partly cloudy end on bitmap row 17, the last row of the rain-chance
+label (ui.py), so the label sits on the cloud's base with no cloud under it. Rain's
+drops (rows 15-19) fall below the cloud; the label hides their tops, their tails show under it.
 """
 
-# cloud: shifts 1 px right and back
-DRIFT = (0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0)
-RAIN_STEPS = 20   # 5 falls of 4 rows each: ends exactly at the resting picture
-
-
-def steps(kind):
-    if kind == "cloud":
-        return len(DRIFT)
-    if kind == "rain":
-        return RAIN_STEPS
-    return 0   # the sun and partly cloudy do not animate (the ray animation looked bad)
-
-
-def _drift(step):
-    return DRIFT[step] if step is not None and step < len(DRIFT) else 0
+CLOUD_X = 40
+BASE_ROW = 17   # last row of the cloud in cloudy / partly cloudy
 
 
 def _put(b, x, y, c):
@@ -39,46 +24,46 @@ def _disc(b, cx, cy, r, c):
 
 
 def _cloud(b, x, y, c):
-    for cx, cy, r in ((4, 6, 3), (8, 4, 4), (12, 6, 3)):
+    """Three round puffs on a flat base; base corners rounded (rows y+7..y+10)."""
+    for cx, cy, r in ((5, 7, 3), (10, 5, 5), (15, 7, 3)):
         _disc(b, x + cx, y + cy, r, c)
-    for yy in range(6, 10):
-        for xx in range(3, 14):
+    for yy, x0, x1 in ((7, 2, 18), (8, 2, 18), (9, 3, 17), (10, 4, 16)):
+        for xx in range(x0, x1 + 1):
             _put(b, x + xx, y + yy, c)
 
 
 def sun(b, x, y, c_sun):
-    _disc(b, x + 7, y + 6, 3, c_sun)
+    _disc(b, x + 9, y + 8, 5, c_sun)
     for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, -1), (-1, 1), (1, 1)):
-        for k in (5, 6):
-            _put(b, x + 7 + dx * k, y + 6 + dy * k, c_sun)
+        for k in (7, 8):
+            _put(b, x + 9 + dx * k, y + 8 + dy * k, c_sun)
 
 
 def partly(b, x, y, c_sun, c_cloud):
-    _disc(b, x + 10, y + 4, 3, c_sun)
-    for rx, ry in ((10, -1), (16, -1), (16, 4), (4, -1)):
-        _put(b, x + rx, y + ry, c_sun)
-    _cloud(b, x - 1, y + 4, c_cloud)
+    cx = x + 16
+    _disc(b, cx, 6, 3, c_sun)
+    for dx, dy, k in ((0, -1, 5), (-1, 0, 5), (1, 0, 5), (-1, -1, 4), (1, -1, 4)):
+        _put(b, cx + dx * k, 6 + dy * k, c_sun)
+    _cloud(b, x, BASE_ROW - 10, c_cloud)
 
 
-def cloud(b, x, y, c_cloud, step=None):
-    _cloud(b, x + _drift(step), y + 2, c_cloud)
+def cloud(b, x, y, c_cloud):
+    _cloud(b, x, BASE_ROW - 10, c_cloud)
 
 
-def rain(b, x, y, c_cloud, c_drop, step=None, drift=True):
-    _cloud(b, x + (_drift(step) if drift else 0), y, c_cloud)
-    fall = 0 if step is None else step % 4   # rows the streaks have fallen
-    for dx in (1, 4):   # on the left so the rain-chance label can sit bottom-right
-        for k in range(3):
-            _put(b, x + dx - k // 2, y + 11 + fall + k, c_drop)
+def rain(b, x, y, c_cloud, c_drop):
+    _cloud(b, x, y, c_cloud)
+    for dx in (3, 6, 9, 12, 15):
+        for k in range(5):   # 5 rows long: the tails still show under the label's rows
+            _put(b, x + dx - (k + 1) // 3, y + 13 + k, c_drop)
 
 
-def draw(b, kind, x, y, c_sun, c_cloud, c_drop, step=None, drift=True):
-    """drift=False keeps the cloud still (rain that starts on a data refresh only falls)."""
+def draw(b, kind, c_sun, c_cloud, c_drop):
     if kind == "sun":
-        sun(b, x, y, c_sun)
+        sun(b, 42, 2, c_sun)
     elif kind == "partly":
-        partly(b, x, y, c_sun, c_cloud)
+        partly(b, CLOUD_X, 0, c_sun, c_cloud)
     elif kind == "cloud":
-        cloud(b, x, y, c_cloud, step)
+        cloud(b, CLOUD_X, 0, c_cloud)
     else:
-        rain(b, x, y, c_cloud, c_drop, step, drift)
+        rain(b, CLOUD_X, 2, c_cloud, c_drop)
