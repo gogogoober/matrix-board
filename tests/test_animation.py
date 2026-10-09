@@ -221,14 +221,25 @@ class SlideTest(unittest.TestCase):
             lit = [(x, y) for y in range(top - 3, top + 13) for x in range(22, 64) if c[y][x] != BLACK]
             self.assertEqual(min(y for _, y in lit), top)
             self.assertEqual(max(y for _, y in lit), top + 9)            # 10 rows tall
-        for x0, x1 in ((22, 44), (44, 64)):       # each column holds a 13 px wide number at most
+        for (x0, x1), widest in (((22, 44), 13), ((44, 64), 9)):   # the second time is thinner
             xs = [x for y in range(6, 16) for x in range(x0, x1) if c[y][x] != BLACK]
-            self.assertLessEqual(max(xs) - min(xs) + 1, 13)
+            self.assertLessEqual(max(xs) - min(xs) + 1, widest)
 
     def test_a_two_digit_number_is_thirteen_pixels_wide(self):
         import pixfont
-        self.assertEqual(pixfont.text_width("15", 2), 13)
-        self.assertEqual(pixfont.text_width("5", 2), 6)
+        self.assertEqual(pixfont.cols_width("15", ui.TIME_COLS[0]), 13)
+        self.assertEqual(pixfont.cols_width("5", ui.TIME_COLS[0]), 6)
+        self.assertEqual(pixfont.cols_width("28", ui.TIME_COLS[1]), 9)
+
+    def test_the_second_time_is_thinner_than_the_first(self):
+        _, state, screen, _ = make()
+        feed(state, screen, 10.0, ([88, 88, 90, 95, 99, 99], [88, 88, 90, 95, 99, 99]))
+        settle(screen, 10.0)
+        c = render.render(screen.group)
+        first = sum(1 for y in range(6, 16) for x in range(22, 44) if c[y][x] != BLACK)
+        second = sum(1 for y in range(6, 16) for x in range(44, 64) if c[y][x] != BLACK)
+        self.assertLess(second, first * 0.75)
+
 
 
 class DividerTest(unittest.TestCase):

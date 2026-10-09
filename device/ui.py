@@ -3,8 +3,8 @@
 Layout (64x64): three rows, heights 21/21/22, dotted dividers.
   rows 0 and 1: line bullet (circle, route letter cut out in black, bold)
                 + the next two arrivals in two right-aligned columns, drawn
-                as digits 6 px wide and 10 tall (3x5 font at double size; the 4x5 BIG
-                font at 2x was 8 wide, too fat) into one small
+                as digits 10 tall (3x5 font at double size, 6 wide; the second time only 4 wide
+                with 1 px sides so it draws less attention) into one small
                 bitmap per row, so a slide is just moving a TileGrid
   row 2:        weather, static: high (orange) over low (blue) in exactly the
                 bullets' columns, icon on the right, rain chance in the
@@ -27,10 +27,11 @@ ROW_Y = (0, 21, 42)
 ROW_H = (21, 21, 22)
 BULLET_X = 11   # circle centre x
 BULLET_R = 8
-COL_RIGHT = (41, 60)   # right edge of the two time columns (2 px gap between two-digit numbers)
+COL_RIGHT = (41, 58)   # right edge of the two time columns (2 px gap between two-digit numbers)
 MAX_SHOWN = 99
 TIMES_X = 21    # left edge of the times bitmaps (right of the bullets)
 TIMES_W = 43    # 21..63
+TIME_COLS = ((2, 2, 2), (1, 2, 1))   # glyph column widths: the second time is thinner and narrower
 TIMES_DY = 6    # row top to the digits' top (10 px tall, centred on the bullet)
 MASK_W = 21     # x < MASK_W belongs to the bullet; sliding times disappear behind it
 SLIDE = 43      # px a row's times travel: far enough to leave the screen on both sides
@@ -216,8 +217,8 @@ class Ui:
         bm = self.tbitmaps[i]
         bm.fill(0)
         for n in range(2):
-            w = pixfont.text_width(texts[n], 2)
-            pixfont.draw(bm, texts[n], COL_RIGHT[n] - TIMES_X - w, 0, 1 + n, 2)
+            w = pixfont.cols_width(texts[n], TIME_COLS[n])
+            pixfont.draw_cols(bm, texts[n], COL_RIGHT[n] - TIMES_X - w, 0, 1 + n, TIME_COLS[n])
 
     def _place(self, i, off):
         """Slide row i's times: off px right of where they rest."""

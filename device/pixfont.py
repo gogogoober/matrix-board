@@ -65,6 +65,28 @@ def draw(bitmap, s, x, y, color, k=1, gap=1):
     _walk(s, x, y, k, gap, lambda c, px, py: _put(bitmap, px, py, c), color)
 
 
+def cols_width(s, cols, gap=1):
+    """Width of s drawn by draw_cols (3x5 digits)."""
+    return len(s) * sum(cols) + gap * (len(s) - 1)
+
+
+def draw_cols(bitmap, s, x, y, color, cols=(2, 2, 2), k=2, gap=1):
+    """3x5 glyphs where glyph column q is cols[q] px wide and every glyph row is k px
+    tall: cols=(2, 2, 2) is the plain double size, cols=(1, 2, 1) a thinner, narrower
+    digit of the same height. Only the digits and other 3-wide glyphs."""
+    for ch in s:
+        rows = GLYPHS[ch]
+        for r in range(5):
+            left = x
+            for q in range(3):
+                if rows[r * 3 + q] == "1":
+                    for dy in range(k):
+                        for dx in range(cols[q]):
+                            _put(bitmap, left + dx, y + r * k + dy, color)
+                left += cols[q]
+        x += sum(cols) + gap
+
+
 def draw_text(bitmap, s, x, y, color, font=GLYPHS, k=1, gap=1):
     """Text in any of the fonts above (a glyph missing from `font` is skipped)."""
     s = "".join(ch for ch in s if ch in font)
