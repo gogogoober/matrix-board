@@ -3,7 +3,9 @@
 Layout (64x64): three rows, heights 21/21/22, dotted dividers.
   rows 0 and 1: line bullet (circle, route letter cut out in black, bold)
                 + the next two arrivals in two right-aligned columns
-  row 2:        weather (two alternating views)
+  row 2:        weather, static: high (orange) over low (blue) in exactly the
+                bullets' columns, icon on the right, rain chance in the
+                bottom-right corner only when it matters
 Built once; render() only changes label text/colour.
 """
 import displayio
@@ -13,13 +15,14 @@ from adafruit_display_text import label
 import config
 import feed
 import hw
+import icons
+import pixfont
 
 ROW_Y = (0, 21, 42)
 ROW_H = (21, 21, 22)
 BULLET_X = 11   # circle centre x
 BULLET_R = 8
 COL_RIGHT = (44, 62)   # right edge of the two time columns
-CHAR_W = 6
 MAX_SHOWN = 99
 
 # Official MTA line colours. The route letter is cut out in black.
@@ -42,6 +45,16 @@ STALE = 0x505050
 WHITE = 0xFFFFFF
 BLUE = 0x40A0FF
 DIVIDER = 0x303030
+ORANGE = 0xFF8A20
+ICE = 0x60B0FF
+SUN = 0xFFD000
+CLOUD = 0xA8A8B8
+DROP = 0x3090FF
+
+# palette indices of the weather bitmap
+W_BLACK, W_WHITE, W_HI, W_LO, W_SUN, W_CLOUD, W_DROP, W_DIM = range(8)
+W_Y = 42   # screen row where the weather bitmap starts
+W_H = 22
 
 
 def _sc(rgb):
@@ -100,17 +113,28 @@ class Ui:
                 self.group.append(lbl)
                 row.append(lbl)
             self.cols.append(row)
-        wy = ROW_Y[2] + ROW_H[2] // 2
-        self.wx_a = label.Label(
-            terminalio.FONT, text="", color=_sc(WHITE),
-            anchor_point=(0.0, 0.5), anchored_position=(2, wy),
-        )
-        self.wx_b = label.Label(
-            terminalio.FONT, text="", color=_sc(BLUE),
-            anchor_point=(0.0, 0.5), anchored_position=(2, wy),
-        )
-        self.group.append(self.wx_a)
-        self.group.append(self.wx_b)
+        self.wbitmap = displayio.Bitmap(hw.WIDTH, W_H, 8)
+        wpal = displayio.Palette(8)
+        for i, rgb in ((W_BLACK, 0x000000), (W_WHITE, WHITE), (W_HI, ORANGE), (W_LO, ICE),
+                       (W_SUN, SUN), (W_CLOUD, CLOUD), (W_DROP, DROP), (W_DIM, STALE)):
+            wpal[i] = _sc(rgb)
+        self.group.append(displayio.TileGrid(self.wbitmap, pixel_shader=wpal, x=0, y=W_Y))
+        # white line across the top row, shown briefly on a double tap
+        self.flash_bitmap = displayio.Bitmap(hw.WIDTH, 1, 2)
+        self.flash_bitmap.fill(1)
+        fpal = displayio.Palette(2)
+        fpal[0] = 0x000000
+        fpal[1] = _sc(WHITE)
+        self.flash_tile = displayio.TileGrid(self.flash_bitmap, pixel_shader=fpal, x=0, y=0)
+        self.flash_tile.hidden = True
+        self.group.append(self.flash_tile)
+        self._flash_until = 0.0
+        self.weather_view = None   # what is drawn now: (hi, lo, kind, pop_label) or None
+        self._weather_drawn = False
+
+    def flash(self, now, seconds):
+        self._flash_until = now + seconds
+        self.flash_tile.hidden = False
 
     def _set(self, lbl, text, color=None):
         if lbl.text != text:
@@ -119,6 +143,8 @@ class Ui:
             lbl.color = color
 
     def render(self, now):
+        if not self.flash_tile.hidden and now >= self._flash_until:
+            self.flash_tile.hidden = True
         for i, slot in enumerate(self.state.slots):
             age = slot.age(now)
             fresh = age is not None and age <= config.STALE_AFTER_S
@@ -131,15 +157,26 @@ class Ui:
     def _render_weather(self, now):
         wx = self.state.weather
         if wx is None:
-            self._set(self.wx_a, "--", _sc(STALE))
-            self._set(self.wx_b, "")
-            return
-        if int(now // config.WEATHER_VIEW_S) % 2 == 0:
-            a = "%dF" % wx["temp"]
-            b = feed.condition_text(wx["code"])
+            view = None
         else:
-            a = "H%d L%d" % (wx["hi"], wx["lo"])
-            b = "" if wx["pop"] is None else "%d%%" % wx["pop"]
-        self._set(self.wx_a, a, _sc(WHITE))
-        self._set(self.wx_b, b)
-        self.wx_b.x = 2 + CHAR_W * (len(a) + 1)
+            kind = feed.weather_kind(wx["code"], wx["pop"], config.RAIN_ICON_POP)
+            view = (wx["hi"], wx["lo"], kind,
+                    feed.pop_label(kind, wx["pop"], config.PARTLY_POP_MIN))
+        if self._weather_drawn and view == self.weather_view:
+            return   # static: only redraw when something changed
+        self.weather_view = view
+        self._weather_drawn = True
+        b = self.wbitmap
+        b.fill(W_BLACK)
+        if view is None:
+            pixfont.draw_big_centered(b, "--", BULLET_X, 1, W_DIM)
+            pixfont.draw_big_centered(b, "--", BULLET_X, 12, W_DIM)
+            return
+        hi, lo, kind, pop = view
+        # centred on the bullet column: two digits span exactly the circle's width
+        pixfont.draw_big_centered(b, "%d" % hi, BULLET_X, 1, W_HI)
+        pixfont.draw_big_centered(b, "%d" % lo, BULLET_X, 12, W_LO)
+        icons.draw(b, kind, 45, 3, W_SUN, W_CLOUD, W_DROP)
+        if pop is not None:
+            x = hw.WIDTH - 1 - pixfont.text_width(pop)
+            pixfont.draw_halo(b, pop, x, 16, W_DROP if wx["pop"] >= config.RAIN_ICON_POP else W_WHITE)

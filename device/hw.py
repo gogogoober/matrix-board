@@ -86,6 +86,18 @@ def make_display():
     return framebufferio.FramebufferDisplay(matrix, auto_refresh=True)
 
 
+def make_accelerometer():
+    """LIS3DH at 400 Hz, +/-4 g. Read dev.acceleration -> (x, y, z) in m/s^2.
+    Device-only. Tap detection is done in software (see tap.py)."""
+    import adafruit_lis3dh
+    import board
+
+    dev = adafruit_lis3dh.LIS3DH_I2C(board.I2C(), address=ACCEL_I2C_ADDR)
+    dev.range = adafruit_lis3dh.RANGE_4_G
+    dev.data_rate = adafruit_lis3dh.DATARATE_400_HZ
+    return dev
+
+
 def show(display, group):
     """Set the root group on CircuitPython 8.0 (show) and 8.1+ (root_group)."""
     try:

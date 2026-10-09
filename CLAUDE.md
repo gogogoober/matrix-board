@@ -54,8 +54,19 @@ Still open:
   the top three quarters. That bug was found by a row-mapping test and a photo.
 - **Orientation:** with the Matrix Portal on the right-hand edge, (0,0) is the
   top-left. Verified by an asymmetric "F" glyph.
-- **Buttons:** at least one of UP/DOWN is broken. **Do not design the app
-  around buttons.** Use Wi-Fi/config for input; accelerometer works if needed.
+- **Input (fact, verified 2026-10-08):** the physical buttons are unreliable
+  (at least one of UP/DOWN is broken), so **the double tap is the app's one
+  reliable input.** It is detected in software from the LIS3DH (see "Double tap"
+  below), is not a gyro (the chip is an accelerometer only), and works on the
+  board or the panel frame next to it. Currently a double tap only flashes a
+  white line across the top row for 1 s: it proves the input works and is
+  wired to `App.double_tap(now)`, the single place to hang an action.
+  **Candidate actions (none chosen yet):** force an immediate data refresh /
+  clear stale data; cycle a view (e.g. the next two trains, show a third
+  stop, or a detail screen); briefly show status (IP, signal, last error,
+  free memory); toggle night dimming; trigger an API call. A single tap or
+  a long press are not detected; if more inputs are needed, more tap patterns
+  can be added in `device/tap.py`.
 - **Power wiring:** the panel's 5 V/GND leads land on the Matrix Portal's
   screw terminals, so the panel is fed through the board from USB-C.
   Laptop USB-C ran patterns at brightness cap 0.25 without resets; full-white
@@ -88,10 +99,31 @@ cut-out on the line-coloured circle; only trains **4 minutes or more** away are
 shown (0-3 min are skipped, never displayed), the next two that qualify fill
 the columns; six trains are fetched per stop so there is always one to skip to.
 Times colour is still being chosen (yellow now; options in `out/colors.png`,
-`sim/colors.py`). Weather row is a placeholder to be redesigned.
+`sim/colors.py`).
+**Weather row (decided 2026-10-08, static, never alternates):** high (orange)
+over low (blue), **no H/L letters** (user removed them), in a 4x5 pixel font at
+double size (`device/pixfont.py`) so two digits span exactly the bullet
+circles' columns x=3..19 (test enforces it; the digit 1 is drawn full-width
+for this), icon on the right (`device/icons.py`: sun, partly, cloud,
+rain; rain if code is wet or chance >= 40%), rain-chance label small in the
+bottom-right corner with a 1 px black halo cut into the icon. Label rules
+(`feed.pop_label`): never for sun, only above 15% for partly cloudy, always for
+cloud and rain; blue at >= 40%. The row is its own 64x22 bitmap, redrawn only
+when the weather changes. Mockups (not shipped): `sim/weather_mock*.py`.
+RAM after startup is ~80 KB free (printed at boot as `mem_free`).
 **API gotcha:** nyc-subway-status route slugs must be lowercase
 (`.../lines/q`); `Q` returns 404. The simulator's fake server is strict about
 this on purpose (regression test `test_every_configured_stop_really_loads`).
+
+**Double tap (user, 2026-10-08):** a double tap on the board shows a white line
+across the top LED row for 1 s (`config.TAP_FLASH_S`). Detection is **software**
+(`device/tap.py`, fed raw LIS3DH samples at ~400-500 Hz from the main loop):
+the chip's built-in tap detector fired 0 to 2 times for ~10 real double taps,
+even with the high-pass filter, so don't go back to it. Measured on this
+board: real taps are 0.7-3 g changes between samples, 40-90 ms long, 0.19-0.40 s
+apart; `TAP_ONSET_G = 0.5`. A fetch blocks the loop for ~1-2 s, taps during it
+are missed (the detector reseeds after any >50 ms gap to avoid fake taps).
+Tuning/diagnostic: `tests/hw/t7_tap_tune.py`.
 
 ## Rules and gotchas (easy to break)
 

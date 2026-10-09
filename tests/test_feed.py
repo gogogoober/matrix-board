@@ -49,9 +49,26 @@ class WeatherTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             feed.parse_weather(w)
 
-    def test_condition_text_fits(self):
-        for code in range(0, 100):
-            self.assertLessEqual(len(feed.condition_text(code)), 6)
+    def test_kind_from_code_and_rain_chance(self):
+        self.assertEqual(feed.weather_kind(0, 0), "sun")
+        self.assertEqual(feed.weather_kind(1, 5), "sun")
+        self.assertEqual(feed.weather_kind(2, 10), "partly")
+        self.assertEqual(feed.weather_kind(3, 10), "cloud")
+        self.assertEqual(feed.weather_kind(45, None), "cloud")
+        for wet in (51, 61, 65, 71, 80, 95):
+            self.assertEqual(feed.weather_kind(wet, 0), "rain")
+        # a dry sky code still becomes rain when the chance is high
+        self.assertEqual(feed.weather_kind(3, 40), "rain")
+        self.assertEqual(feed.weather_kind(3, 39), "cloud")
+
+    def test_pop_label_rules(self):
+        self.assertIsNone(feed.pop_label("sun", 80))          # never for sun
+        self.assertIsNone(feed.pop_label("partly", 10))       # hidden low
+        self.assertIsNone(feed.pop_label("partly", 15))       # 15 is not above 15
+        self.assertEqual(feed.pop_label("partly", 16), "16%")
+        self.assertEqual(feed.pop_label("cloud", 0), "0%")    # always for cloud
+        self.assertEqual(feed.pop_label("rain", 80), "80%")
+        self.assertIsNone(feed.pop_label("rain", None))
 
 
 if __name__ == "__main__":

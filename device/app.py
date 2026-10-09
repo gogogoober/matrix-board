@@ -38,6 +38,9 @@ class App:
             print("weather error", self.last_error)
             self.next_weather = now + config.RETRY_S
 
+    def double_tap(self, now):
+        self.ui.flash(now, config.TAP_FLASH_S)
+
     def step(self, now):
         """Call about once a second."""
         if now >= self.next_arrivals:

@@ -56,22 +56,26 @@ def parse_weather(payload):
     }
 
 
-def condition_text(code):
-    """Short word (max 6 chars) for a WMO weather code."""
-    if code == 0:
-        return "Clear"
-    if code in (1, 2):
-        return "P.Cldy"
-    if code == 3:
-        return "Cloudy"
-    if code in (45, 48):
-        return "Fog"
-    if 51 <= code <= 57:
-        return "Drizzl"
-    if 61 <= code <= 67 or 80 <= code <= 82:
-        return "Rain"
-    if 71 <= code <= 77 or code in (85, 86):
-        return "Snow"
-    if code >= 95:
-        return "Storm"
-    return "?"
+def weather_kind(code, pop, rain_pop=40):
+    """'sun', 'partly', 'cloud' or 'rain' from a WMO code and rain chance."""
+    wet = 51 <= code <= 67 or 71 <= code <= 77 or 80 <= code <= 86 or code >= 95
+    if wet or (pop is not None and pop >= rain_pop):
+        return "rain"
+    if code in (0, 1):
+        return "sun"
+    if code == 2:
+        return "partly"
+    return "cloud"
+
+
+def pop_label(kind, pop, partly_min=15):
+    """'30%' when the rain chance is worth showing, else None.
+
+    Never for sun; for partly cloudy only above partly_min; always for cloud
+    and rain (when known).
+    """
+    if pop is None or kind == "sun":
+        return None
+    if kind == "partly" and pop <= partly_min:
+        return None
+    return "%d%%" % pop
