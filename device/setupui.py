@@ -57,6 +57,16 @@ class SetupScreen:
             self._text(line2, y + 9, WHITE)
         self._show()
 
+    def hint(self):
+        """Shown while the sign has had no data for a while."""
+        self._ensure()
+        self.bitmap.fill(BLACK)
+        self._text("NO DATA", 8, RED)
+        self._text("DOUBLE TAP", 22, WHITE)
+        self._text("TO SET UP", 30, WHITE)
+        self._text("WI-FI", 38, WHITE)
+        self._show()
+
     def scanning(self):
         self.message("WI-FI SETUP", "SCANNING")
 

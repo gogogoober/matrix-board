@@ -25,6 +25,9 @@ phone, pick your network, type its password, and the sign joins it.
    normal display. Setup also times out by itself after 10 minutes
    (`config.PORTAL_TIMEOUT_S`) so a stray tap cannot strand the sign.
 8. First boot with no credentials anywhere enters setup automatically.
+9. **No data hint:** if no fetch has succeeded for 30 s (`config.NO_DATA_HINT_S`; Wi-Fi
+   down, wrong network, API down), the panel alternates 6 s of `NO DATA / DOUBLE TAP TO SET UP WI-FI`
+   with 6 s of the (dimmed, stale) sign until a fetch works. Leaving setup restarts the 30 s clock.
 
 ## Design decisions
 

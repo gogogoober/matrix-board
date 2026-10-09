@@ -59,6 +59,7 @@ for name, show in (
     ("7_setup_portal", lambda: a3.setup_ui.portal(config.AP_NAME, "192.168.4.1")),
     ("8_setup_portal_notice", lambda: a3.setup_ui.portal(config.AP_NAME, "192.168.4.1", "COULD NOT JOIN")),
     ("9_setup_joining", lambda: a3.setup_ui.joining("The Valley")),
+    ("10_no_data_hint", a3.setup_ui.hint),
 ):
     show()
     canvas = render.render(display3.root_group)

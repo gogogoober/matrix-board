@@ -39,3 +39,6 @@ AP_NAME = "Subway LED"    # open network the sign creates; keep it short (shown 
 PORTAL_IP = "192.168.4.1" # the ESP32 AP address (esp.ip_address is wrong in AP mode); shown on the panel
 PORTAL_TIMEOUT_S = 600    # setup mode gives up and returns to the sign after this
 PORTAL_DNS = True         # answer every DNS query with the sign (best effort)
+NO_DATA_HINT_S = 30       # no successful fetch for this long: show how to set up Wi-Fi
+HINT_ON_S = 6             # then alternate: hint this long ...
+HINT_OFF_S = 6            # ... and the (stale) sign this long, until a fetch works

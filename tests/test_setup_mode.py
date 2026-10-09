@@ -24,6 +24,50 @@ class SetupModeTest(unittest.TestCase):
     def shown(self):
         return render.render(self.display.root_group)
 
+    def test_hint_after_30s_without_data_then_alternates_and_clears(self):
+        net, wifi, display, screen, a = harness.make_setup()
+        net.fail = True
+        shown = lambda: display.root_group is a.setup_ui.group
+        a.step(0.0)
+        a.step(config.NO_DATA_HINT_S - 1)
+        self.assertFalse(shown())                                  # not yet
+        t = config.NO_DATA_HINT_S + 1
+        a.step(t)
+        self.assertTrue(shown())                                   # hint
+        self.assertGreater(lit(render.render(display.root_group)), 100)
+        a.step(t + config.HINT_ON_S)
+        self.assertFalse(shown())                                  # back to the (stale) sign
+        a.step(t + config.HINT_ON_S + config.HINT_OFF_S)
+        self.assertTrue(shown())                                   # hint again
+        net.fail = False
+        a.step(t + 100)                                            # a fetch works
+        self.assertFalse(shown())
+        self.assertFalse(a.hint_shown)
+
+    def test_no_hint_while_fetches_succeed_or_without_wifi(self):
+        net, wifi, display, screen, a = harness.make_setup()
+        for t in range(0, 300, 10):
+            a.step(float(t))
+        self.assertFalse(a.hint_shown)
+        net2, state, screen2, a2 = harness.make()
+        net2.fail = True
+        for t in range(0, 300, 10):
+            a2.step(float(t))                                      # no wifi object: nothing to hint with
+        self.assertFalse(a2.hint_shown)
+
+    def test_double_tap_from_the_hint_enters_setup_and_leaving_restarts_the_clock(self):
+        net, wifi, display, screen, a = harness.make_setup()
+        net.fail = True
+        a.step(0.0)
+        a.step(31.0)
+        self.assertTrue(a.hint_shown)
+        a.double_tap(32.0)
+        self.assertEqual(a.mode, app.SETUP)
+        a.double_tap(40.0)
+        self.assertEqual(a.mode, app.RUN)
+        a.step(41.0)
+        self.assertFalse(a.hint_shown)                             # fresh 30 s
+
     def test_without_wifi_a_double_tap_still_only_flashes(self):
         net, state, screen, a = harness.make()
         a.double_tap(1.0)
