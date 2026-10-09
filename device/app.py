@@ -39,6 +39,7 @@ class App:
         self.wx_fails = 0
         self.next_arrivals = 0.0
         self.next_weather = 0.0
+        self.next_idle = None     # when the weather icon next plays its idle animation
         self.last_error = None
         self.mode = RUN
         self.nets = []
@@ -236,6 +237,11 @@ class App:
             self.health.reset(now)      # in case the reboot hook returns (the simulator)
             self.reboot("nodata")
 
+    def frame(self, now):
+        """Call every config.ANIM_FRAME_S: advances the slides and the weather icon."""
+        if self.mode == RUN and not self.hint_shown:
+            self.ui.animate(now)
+
     def step(self, now):
         """Call about once a second."""
         if self.mode == SETUP:
@@ -257,3 +263,8 @@ class App:
         self._update_hint(now)
         if not self.hint_shown:
             self.ui.render(now)
+            if self.next_idle is None:
+                self.next_idle = now + config.IDLE_ANIM_S
+            elif now >= self.next_idle:
+                self.next_idle = now + config.IDLE_ANIM_S
+                self.ui.start_idle(now)

@@ -19,6 +19,7 @@ class AppSimTest(unittest.TestCase):
     def test_fresh_screen_draws_all_three_rows(self):
         net, state, screen, a = harness.make()
         a.step(0.0)
+        screen.animate(5.0)   # let the first data finish sliding in
         c = render.render(screen.group)
         self.assertGreater(lit(c, 0, 0, 20, 20), 150)     # bullet 1
         self.assertGreater(lit(c, 22, 2, 64, 19), 20)     # minutes 1
@@ -69,6 +70,7 @@ class AppSimTest(unittest.TestCase):
     def test_times_are_white_with_the_first_train_brighter(self):
         net, state, screen, a = harness.make()
         a.step(0.0)
+        screen.animate(5.0)
         c = render.render(screen.group)
 
         def brightest(x0, x1, y0=2, y1=19):
@@ -262,6 +264,7 @@ class AppSimTest(unittest.TestCase):
             a.step(0.0)
             state.slots[0].set(pair, 0.0)
             screen.render(0.0)
+            screen.animate(5.0)
             c = render.render(screen.group)
             for x0, x1 in ((22, 47), (47, 64)):
                 xs = [x for y in range(2, 19) for x in range(x0, x1) if c[y][x] != (0, 0, 0)]

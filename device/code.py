@@ -62,6 +62,7 @@ def main():
     started = time.monotonic()
     trusted = False
     last_step = 0.0
+    last_frame = 0.0
     accel_errors = 0
     while True:
         now = time.monotonic()
@@ -78,6 +79,9 @@ def main():
                 if taps.update(now, x, y, z):
                     print("double tap")
                     the_app.double_tap(now)
+        if now - last_frame >= config.ANIM_FRAME_S:   # slides and icon animation
+            last_frame = now
+            the_app.frame(now)
         if now - last_step >= 0.1:   # the app itself only needs ~10 Hz
             last_step = now
             the_app.step(now)

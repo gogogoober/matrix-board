@@ -30,6 +30,10 @@ page picks two stops from `device/stops/` (see `docs/wifi-setup.md`); saved in N
 back-off, planned restart every 6 h, crash-count wipe of saved stops/Wi-Fi.
 No hardware watchdog on purpose (watchdog/brown-out resets enter safe mode and
 stay dead); `tests/hw/t9_wdt_safe_mode.py` checks that on the board.
+**Animations (branch `worktree-led-animations`, 2026-10-09, laptop-tested only; read
+`docs/animations.md`):** times slide left/right on a refresh, rain falls with them, sun/cloud/rain
+idle animation on a 15 s timer; dividers stay still single-LED dots. Layer order in `ui.py`
+matters (labels, mask, bullets, letters): don't reorder.
 Not yet done: on-panel photo check of the layout, sim-vs-photo fidelity check,
 a wall power supply, board test of the reliability pass (t9 watchdog check, recovery paths), direction cue in rows.
 

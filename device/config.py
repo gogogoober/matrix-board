@@ -34,6 +34,16 @@ TAP_FLASH_S = 1.0         # how long the white top-row flash stays on
 RAIN_ICON_POP = 40        # rain chance (%) at which the icon becomes rain
 PARTLY_POP_MIN = 15       # partly cloudy shows the % only above this
 
+# Animations (docs/animations.md). When arrivals change, a row's two times slide off to the
+# left and the new ones slide in from the right; the weather icon has a short idle animation
+# on a plain timer. Everything else on the panel stays still.
+ANIM_FRAME_S = 0.04       # main loop advances animations this often (25 Hz)
+SLIDE_OUT_S = 0.38        # old times leave to the left
+SLIDE_IN_S = 0.52         # new times arrive from the right
+SLIDE_ROW_DELAY_S = 0.14  # row 2 starts this long after row 1
+WX_STEP_S = 0.1           # one step of an icon animation (sun rays, cloud drift, rain)
+IDLE_ANIM_S = 15          # weather icon idle animation every this many seconds
+
 # Wi-Fi setup portal (double tap). See docs/wifi-setup.md.
 AP_NAME = "Subway LED"    # open network the sign creates; keep it short (shown on the panel)
 PORTAL_IP = "192.168.4.1" # the ESP32 AP address (esp.ip_address is wrong in AP mode); shown on the panel
