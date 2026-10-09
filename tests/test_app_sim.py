@@ -75,7 +75,7 @@ class AppSimTest(unittest.TestCase):
 
         def brightest(x0, x1, y0=2, y1=19):
             return max(c[y][x][0] for y in range(y0, y1) for x in range(x0, x1))
-        first, second = brightest(24, 43), brightest(43, 64)
+        first, second = brightest(24, 44), brightest(44, 64)
         self.assertEqual(first, (hw.scale(ui.TIME_COLORS[0]) >> 16) & 255)
         self.assertEqual(second, (hw.scale(ui.TIME_COLORS[1]) >> 16) & 255)
         self.assertGreater(first, second)
@@ -267,7 +267,7 @@ class AppSimTest(unittest.TestCase):
             screen.render(0.0)
             screen.animate(5.0)
             c = render.render(screen.group)
-            for x0, x1 in ((22, 43), (43, 64)):
+            for x0, x1 in ((22, 44), (44, 64)):
                 xs = [x for y in range(2, 19) for x in range(x0, x1) if c[y][x] != (0, 0, 0)]
                 edges.append(max(xs))
         self.assertLessEqual(abs(edges[0] - edges[2]), 1)   # column 1

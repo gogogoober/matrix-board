@@ -214,18 +214,21 @@ class SlideTest(unittest.TestCase):
         self.assertEqual(screen.tpalettes[0][1], hw.scale(ui.TIME_COLORS_STALE[0]))
         self.assertEqual([g.x for g in screen.tgrids], [ui.TIMES_X] * 2)
 
-    def test_the_digits_have_a_two_pixel_stroke(self):
+    def test_digits_are_six_wide_and_ten_tall_centred_on_the_bullet(self):
         _, state, screen, _ = make()
         c = render.render(screen.group)
-        for y in range(6, 16):
-            run = 0
-            for x in range(22, 64):
-                if c[y][x] != BLACK:
-                    run += 1
-                else:
-                    if run:
-                        self.assertEqual(run % 2, 0, "row %d has a thin stroke" % y)
-                    run = 0
+        for top in (6, 27):                       # row 1 and row 2: rows 6-15 and 27-36
+            lit = [(x, y) for y in range(top - 3, top + 13) for x in range(22, 64) if c[y][x] != BLACK]
+            self.assertEqual(min(y for _, y in lit), top)
+            self.assertEqual(max(y for _, y in lit), top + 9)            # 10 rows tall
+        for x0, x1 in ((22, 44), (44, 64)):       # each column holds a 13 px wide number at most
+            xs = [x for y in range(6, 16) for x in range(x0, x1) if c[y][x] != BLACK]
+            self.assertLessEqual(max(xs) - min(xs) + 1, 13)
+
+    def test_a_two_digit_number_is_thirteen_pixels_wide(self):
+        import pixfont
+        self.assertEqual(pixfont.text_width("15", 2), 13)
+        self.assertEqual(pixfont.text_width("5", 2), 6)
 
 
 class DividerTest(unittest.TestCase):
