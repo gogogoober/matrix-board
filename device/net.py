@@ -79,14 +79,10 @@ class Net:
             # 254), so create_AP times out. Only a reported failure (9) is real.
             if self.esp.status == WL_AP_FAILED:
                 raise
-        try:
-            ip_bytes = bytes(self.esp.ip_address)
-            ip = self.esp.pretty_ip(ip_bytes)
-        except Exception:
-            ip_bytes = b""
-        if len(ip_bytes) != 4 or ip_bytes == b"\x00\x00\x00\x00":
-            ip = config.PORTAL_IP
-            ip_bytes = bytes(int(p) for p in ip.split("."))
+        # esp.ip_address is not trustworthy in AP mode (it showed a wrong address
+        # on the panel), so use the ESP32's fixed AP address.
+        ip = config.PORTAL_IP
+        ip_bytes = bytes(int(p) for p in ip.split("."))
         self._server = portal.Server(self.esp, nets)
         self._server.start()
         if config.PORTAL_DNS:

@@ -49,7 +49,7 @@ Tests `t8_ap_portal`, `t8b_ap_probe`, `t8c_app_setup` (no phone needed):
   (stopped), so the library's `create_AP` times out and raises `OSError`
   although the AP is up. `Net.portal_start` catches that and only treats
   status 9 (AP failed) as an error.
-- `esp.ip_address` / fallback gives `192.168.4.1`; the HTTP server socket and
+- `esp.ip_address` is **wrong in AP mode** (the panel showed a bad address); the code now always uses `config.PORTAL_IP` = `192.168.4.1`, which a phone confirmed. The HTTP server socket and
   the UDP:53 socket both start without errors.
 - RAM (real app, `t8c`): 67 KB free before setup, 57 KB with the portal up,
   60 KB after leaving (the portal module stays imported). Normal-sign RAM

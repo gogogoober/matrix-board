@@ -36,6 +36,6 @@ PARTLY_POP_MIN = 15       # partly cloudy shows the % only above this
 
 # Wi-Fi setup portal (double tap). See docs/wifi-setup.md.
 AP_NAME = "Subway LED"    # open network the sign creates; keep it short (shown on the panel)
-PORTAL_IP = "192.168.4.1" # ESP32 default; used if the ESP does not report its address
+PORTAL_IP = "192.168.4.1" # the ESP32 AP address (esp.ip_address is wrong in AP mode); shown on the panel
 PORTAL_TIMEOUT_S = 600    # setup mode gives up and returns to the sign after this
 PORTAL_DNS = True         # answer every DNS query with the sign (best effort)
