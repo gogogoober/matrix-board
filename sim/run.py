@@ -44,6 +44,7 @@ for name, wx in states:
     if wx:
         st.set_weather(wx, 0.0)
         sc.render(0.0)
+    harness.settle(sc)
     tiles.append(render.to_image(render.render(sc.group), cell=5, gain=1.0 / hw.BRIGHTNESS_CAP, bit_depth=hw.BIT_DEPTH))
 sheet = Image.new("RGB", (tiles[0].width * 3 + 20, tiles[0].height * 2 + 10), (30, 30, 30))
 for i, t in enumerate(tiles):

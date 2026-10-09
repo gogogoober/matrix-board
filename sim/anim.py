@@ -22,7 +22,7 @@ WEATHER = {
     "cloud": dict(temp=66, code=3, hi=66, lo=51, pop=25),
     "rain": dict(temp=58, code=61, hi=58, lo=49, pop=80),
 }
-NEW_TIMES = ([6, 11, 16, 22, 28, 35], [7, 12, 18, 24, 30, 36])
+NEW_TIMES = ([20, 26, 31, 38, 44, 50], [14, 19, 25, 31, 38, 44])   # the first trains left
 
 
 def to_image(canvas, cell):

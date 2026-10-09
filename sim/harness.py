@@ -59,7 +59,14 @@ def make(net=None):
     return net, state, screen, app.App(state, screen, net.get_json)
 
 
+def settle(screen):
+    """Finish every slide and icon animation (the simulator's picture of the sign at rest)."""
+    for _ in range(3):
+        screen.animate(1e6)
+
+
 def snapshot(screen, path, cell=10):
+    settle(screen)
     canvas = render.render(screen.group)
     import hw
     render.to_image(canvas, cell=cell, gain=1.0 / hw.BRIGHTNESS_CAP, bit_depth=hw.BIT_DEPTH).save(path)

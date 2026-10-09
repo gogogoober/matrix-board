@@ -31,9 +31,10 @@ back-off, planned restart every 6 h, crash-count wipe of saved stops/Wi-Fi.
 No hardware watchdog on purpose (watchdog/brown-out resets enter safe mode and
 stay dead); `tests/hw/t9_wdt_safe_mode.py` checks that on the board.
 **Animations (branch `worktree-led-animations`, 2026-10-09, laptop-tested only; read
-`docs/animations.md`):** times slide left/right on a refresh, rain falls with them, sun/cloud/rain
-idle animation on a 15 s timer; dividers stay still single-LED dots. Layer order in `ui.py`
-matters (labels, mask, bullets, letters): don't reorder.
+`docs/animations.md`):** times (thick yellow digits) slide left/right only when the first train leaves, rain falls
+with them, sun (dims, never switches off)/cloud/rain idle animation on a 15 s timer; dividers
+are still single-LED dots. Anything the 0.25 cap scales below 16 is BLACK on the panel (dividers
+were invisible until 0x404040). Layer order in `ui.py` matters (times, mask, bullets, letters).
 Not yet done: on-panel photo check of the layout, sim-vs-photo fidelity check,
 a wall power supply, board test of the reliability pass (t9 watchdog check, recovery paths), direction cue in rows.
 

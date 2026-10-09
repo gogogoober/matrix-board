@@ -1,5 +1,6 @@
-"""Animations (docs/animations.md): the times slide, the weather icon plays an idle
-animation, and nothing ever leaves its lane (bullets, dividers, the gap under them)."""
+"""Animations (docs/animations.md): the times slide when the first train leaves, the
+weather icon plays an idle animation, and nothing ever leaves its lane (bullets,
+dividers, the gap under them). Also: every colour is visible on the real panel."""
 import os
 import sys
 import unittest
@@ -13,8 +14,15 @@ import icons  # noqa: E402
 import ui  # noqa: E402
 
 BLACK = (0, 0, 0)
-DIVIDER = tuple((hw.scale(ui.DIVIDER) >> s) & 255 for s in (16, 8, 0))
-CLOUD = tuple((hw.scale(ui.CLOUD) >> s) & 255 for s in (16, 8, 0))
+
+
+def rgb(c):
+    s = hw.scale(c)
+    return ((s >> 16) & 255, (s >> 8) & 255, s & 255)
+
+
+DIVIDER = rgb(ui.DIVIDER)
+CLOUD = rgb(ui.CLOUD)
 
 WEATHER = {
     "sun": dict(temp=76, code=0, hi=76, lo=54, pop=0),
@@ -22,7 +30,9 @@ WEATHER = {
     "rain": dict(temp=58, code=61, hi=58, lo=49, pop=80),
 }
 
-NEW_TIMES = ([6, 11, 16, 22, 28, 35], [7, 12, 18, 24, 30, 36])
+# The fixture shows (15, 28) and (10, 20) after the first load.
+COUNTDOWN = ([14, 27, 33, 40, 46, 52], [9, 19, 25, 31, 38, 44])    # a minute later: same trains
+LEFT = ([20, 26, 31, 38, 44, 50], [14, 19, 25, 31, 38, 44])        # the first trains left
 
 
 def make(kind=None):
@@ -35,19 +45,27 @@ def make(kind=None):
     return net, state, screen, a
 
 
-def change_times(state, screen, now):
-    for slot, minutes in zip(state.slots, NEW_TIMES):
+def feed(state, screen, now, data):
+    for slot, minutes in zip(state.slots, data):
         slot.set(minutes, now)
     screen.render(now)
 
 
+def first_train_left(state, screen, now):
+    feed(state, screen, now, LEFT)
+
+
 def frames(screen, start, seconds, dt=0.04):
-    """Yield (t, canvas) while advancing the animation."""
-    n = int(seconds / dt)
-    for k in range(n + 1):
+    """Yield (t, canvas) while advancing the animation at about the main loop's rate."""
+    for k in range(int(seconds / dt) + 1):
         t = start + k * dt
         screen.animate(t)
         yield t, render.render(screen.group)
+
+
+def settle(screen, start):
+    for _ in frames(screen, start, 2.0):
+        pass
 
 
 def lit_columns(canvas, y):
@@ -65,67 +83,99 @@ def assert_lanes(test, c):
         test.assertEqual(lit_columns(c, y), [], "row %d should be empty" % y)
 
 
+class PanelColoursTest(unittest.TestCase):
+    """The panel shows 16 levels per channel and anything the cap scales below 16 is black."""
+
+    def lit(self, color):
+        return max(render.quantize(rgb(color), hw.BIT_DEPTH))
+
+    def test_the_dividers_are_visible_on_the_real_panel(self):
+        self.assertGreater(self.lit(ui.DIVIDER), 0)
+
+    def test_every_drawn_colour_is_visible(self):
+        for name in ("DIVIDER", "ORANGE", "ICE", "SUN", "SUN_MID", "SUN_LOW", "CLOUD", "DROP",
+                     "STALE", "WHITE", "BLUE"):
+            self.assertGreater(self.lit(getattr(ui, name)), 0, name)
+        for c in ui.LINE_COLORS.values():
+            self.assertGreater(self.lit(c), 0, hex(c))
+
+    def test_the_sun_rays_have_three_distinct_brightness_levels(self):
+        full, mid, low = (render.quantize(rgb(c), hw.BIT_DEPTH)[0] for c in (ui.SUN, ui.SUN_MID, ui.SUN_LOW))
+        self.assertGreater(full, mid)
+        self.assertGreater(mid, low)
+        self.assertGreater(low, 0)
+
+
 class SlideTest(unittest.TestCase):
-    def test_changed_times_leave_left_and_return_from_the_right(self):
+    def test_a_train_leaving_slides_the_numbers_left_then_in_from_the_right(self):
         _, state, screen, _ = make()
-        rest = [[l.x for l in row] for row in screen.cols]
-        old = [l.text for l in screen.cols[0]]
-        change_times(state, screen, 10.0)
-        self.assertEqual([l.text for l in screen.cols[0]], old)           # not swapped yet
+        old = screen.texts[0]
+        first_train_left(state, screen, 10.0)
+        self.assertEqual(screen.texts[0], old)                              # still the old numbers
         screen.animate(10.2)
-        self.assertLess(screen.cols[0][0].x, rest[0][0])                  # going left
-        self.assertLess(screen.cols[0][1].x, rest[0][1])
-        self.assertEqual([l.text for l in screen.cols[0]], old)
+        self.assertLess(screen.tgrids[0].x, ui.TIMES_X)                     # going left, both together
+        self.assertEqual(screen.texts[0], old)
         screen.animate(10.0 + config.SLIDE_OUT_S + 0.05)
-        self.assertEqual([l.text for l in screen.cols[0]], ["6", "11"])  # new text, arriving
-        self.assertGreater(screen.cols[0][0].x, rest[0][0])               # from the right
-        for _ in frames(screen, 10.5, 1.5):   # the main loop calls animate about every 40 ms
-            pass
-        # back at the resting anchors (x itself depends on the width of the new text)
-        self.assertEqual([[l.anchored_position for l in row] for row in screen.cols],
-                         [[(right, ui.ROW_Y[i] + 10) for right in ui.COL_RIGHT] for i in range(2)])
-        self.assertEqual([l.text for l in screen.cols[1]], ["7", "12"])
+        self.assertEqual(screen.texts[0], ("20", "26"))                     # new numbers, arriving
+        self.assertGreater(screen.tgrids[0].x, ui.TIMES_X)                  # from the right
+        settle(screen, 10.5)
+        self.assertEqual(screen.tgrids[0].x, ui.TIMES_X)
+        self.assertEqual(screen.texts[1], ("14", "19"))
 
     def test_row_two_starts_after_row_one(self):
         _, state, screen, _ = make()
-        rest = [row[0].x for row in screen.cols]
-        change_times(state, screen, 10.0)
+        first_train_left(state, screen, 10.0)
         screen.animate(10.0 + config.SLIDE_ROW_DELAY_S - 0.01)
-        self.assertLess(screen.cols[0][0].x, rest[0])                     # row 1 already moving
-        self.assertEqual(screen.cols[1][0].x, rest[1])                    # row 2 still waiting
+        self.assertLess(screen.tgrids[0].x, ui.TIMES_X)                     # row 1 already moving
+        self.assertEqual(screen.tgrids[1].x, ui.TIMES_X)                    # row 2 still waiting
         screen.animate(10.0 + config.SLIDE_ROW_DELAY_S + 0.2)
-        self.assertLess(screen.cols[1][0].x, rest[1])                     # now it goes too
+        self.assertLess(screen.tgrids[1].x, ui.TIMES_X)
 
-    def test_both_columns_of_a_row_move_together(self):
+    def test_a_plain_countdown_just_changes_the_digits(self):
         _, state, screen, _ = make()
-        change_times(state, screen, 10.0)
-        before = [l.x for l in screen.cols[0]]
-        screen.animate(10.25)
-        moved = [l.x - b for l, b in zip(screen.cols[0], before)]
-        self.assertEqual(moved[0], moved[1])
-        self.assertLess(moved[0], 0)
+        feed(state, screen, 10.0, COUNTDOWN)
+        self.assertEqual(screen.texts[0], ("14", "27"))                     # changed at once
+        screen.animate(10.2)
+        self.assertEqual(screen.tgrids[0].x, ui.TIMES_X)                    # nothing moved
+        self.assertEqual(screen.tgrids[1].x, ui.TIMES_X)
 
-    def test_nothing_slides_when_nothing_changed(self):
-        _, state, screen, a = make()
-        rest = [[l.x for l in row] for row in screen.cols]
-        screen.render(20.0)
-        screen.animate(20.2)
-        self.assertEqual([[l.x for l in row] for row in screen.cols], rest)
+    def test_a_new_fetch_with_the_same_trains_does_not_slide(self):
+        _, state, screen, _ = make()
+        feed(state, screen, 10.0, ([15, 28, 33, 40, 46, 52], [10, 20, 25, 31, 38, 44]))
+        feed(state, screen, 10.0, ([16, 28, 33, 40, 46, 52], [10, 21, 25, 31, 38, 44]))   # +1 jitter
+        screen.animate(10.2)
+        self.assertEqual([g.x for g in screen.tgrids], [ui.TIMES_X] * 2)
+
+    def test_the_countdown_dropping_the_first_train_below_four_slides(self):
+        net, state, screen, a = harness.make()
+        state.slots[0].set([5, 9, 14, 20, 26, 33], 0.0)
+        state.slots[1].set([6, 11, 17, 22, 30, 36], 0.0)
+        screen.render(0.0)
+        screen.animate(5.0)
+        self.assertEqual(screen.texts[0], ("5", "9"))
+        screen.render(61.0)                                                 # a minute: 4 and 8
+        screen.animate(61.1)
+        self.assertEqual(screen.texts[0], ("4", "8"))
+        self.assertEqual(screen.tgrids[0].x, ui.TIMES_X)                    # no animation
+        screen.render(121.0)                                                # 3 hides: 7 becomes first
+        screen.animate(121.2)
+        self.assertLess(screen.tgrids[0].x, ui.TIMES_X)                     # now it slides
+        self.assertEqual(screen.texts[0], ("4", "8"))
+        settle(screen, 121.4)
+        self.assertEqual(screen.texts[0], ("7", "12"))
 
     def test_first_data_only_slides_in(self):
         _, state, screen, a = harness.make()
         a.step(0.0)
-        self.assertNotEqual(screen.cols[0][0].text, "--")                 # already the new text
-        self.assertGreaterEqual(screen.cols[0][0].x, 64 - 12)             # waiting off the right edge
-        screen.animate(5.0)
-        self.assertLess(screen.cols[0][0].x, 64 - 12)                     # arrived
-        rest = make()[2].cols[0][0].x
-        self.assertEqual(screen.cols[0][0].x, rest)
+        self.assertNotEqual(screen.texts[0], ("--", "--"))                  # already the new text
+        self.assertGreaterEqual(screen.tgrids[0].x, 64)                     # waiting off the right edge
+        settle(screen, 0.0)
+        self.assertEqual(screen.tgrids[0].x, ui.TIMES_X)
 
     def test_times_never_draw_over_the_bullets(self):
         _, state, screen, _ = make()
         ref = render.render(screen.group)
-        change_times(state, screen, 10.0)
+        first_train_left(state, screen, 10.0)
         seen = 0
         for _, c in frames(screen, 10.0, 1.6):
             seen += 1
@@ -136,41 +186,46 @@ class SlideTest(unittest.TestCase):
 
     def test_slide_ends_on_the_resting_picture(self):
         _, state, screen, _ = make()
-        change_times(state, screen, 10.0)
+        first_train_left(state, screen, 10.0)
         last = None
         for _, last in frames(screen, 10.0, 1.6):
             pass
-        # a sign that showed the new times from the start looks identical (rows 0-40)
+        # a sign that showed those numbers from the start looks identical (rows 0-40)
         _, st2, screen2, a2 = harness.make()
         a2.step(0.0)
-        for slot, minutes in zip(st2.slots, NEW_TIMES):
-            slot.set(minutes, 10.0)
-        screen2.render(10.0)
-        screen2.animate(5.0)
-        screen2.render(10.0)
-        screen2.animate(20.0)
+        feed(st2, screen2, 10.0, LEFT)
+        settle(screen2, 10.0)
         self.assertEqual(last[:41], render.render(screen2.group)[:41])
 
     def test_a_change_during_the_slide_in_swaps_the_arriving_text(self):
         _, state, screen, _ = make()
-        change_times(state, screen, 10.0)
-        screen.animate(10.0 + config.SLIDE_OUT_S + 0.1)    # row 1 arriving
-        state.slots[0].set([8, 13, 18, 23, 29, 36], 10.5)
+        first_train_left(state, screen, 10.0)
+        screen.animate(10.0 + config.SLIDE_OUT_S + 0.1)                     # row 1 arriving
+        state.slots[0].set([22, 27, 33, 38, 44, 50], 10.5)
         screen.render(10.5)
-        self.assertEqual([l.text for l in screen.cols[0]], ["8", "13"])
-        screen.animate(12.0)
-        self.assertEqual([l.text for l in screen.cols[0]], ["8", "13"])
+        self.assertEqual(screen.texts[0], ("22", "27"))
+        settle(screen, 10.6)
+        self.assertEqual(screen.texts[0], ("22", "27"))
+        self.assertEqual(screen.tgrids[0].x, ui.TIMES_X)
 
-    def test_dim_and_bright_colours_change_instantly(self):
+    def test_stale_dimming_is_instant_and_moves_nothing(self):
         _, state, screen, a = make()
-        rest = [[l.x for l in row] for row in screen.cols]
-        text = [[l.text for l in row] for row in screen.cols]
-        screen.render(config.STALE_AFTER_S + 100)          # data now stale: dim; the countdown may differ
-        for row in screen.cols:
-            for l in row:
-                self.assertEqual(l.color, hw.scale(ui.TIME_COLORS_STALE[0]))
-        self.assertEqual([[l.x for l in row] for row in screen.cols], rest)
-        self.assertEqual(text[0][0], screen.cols[0][0].text if screen.cols[0][0].text == text[0][0] else text[0][0])
+        screen.render(config.STALE_AFTER_S + 100)
+        self.assertEqual(screen.tpalettes[0][1], hw.scale(ui.TIME_COLORS_STALE[0]))
+        self.assertEqual([g.x for g in screen.tgrids], [ui.TIMES_X] * 2)
+
+    def test_the_digits_have_a_two_pixel_stroke(self):
+        _, state, screen, _ = make()
+        c = render.render(screen.group)
+        for y in range(6, 16):
+            run = 0
+            for x in range(22, 64):
+                if c[y][x] != BLACK:
+                    run += 1
+                else:
+                    if run:
+                        self.assertEqual(run % 2, 0, "row %d has a thin stroke" % y)
+                    run = 0
 
 
 class DividerTest(unittest.TestCase):
@@ -180,7 +235,7 @@ class DividerTest(unittest.TestCase):
 
     def test_dividers_hold_still_during_slides(self):
         _, state, screen, _ = make("rain")
-        change_times(state, screen, 10.0)
+        first_train_left(state, screen, 10.0)
         for _, c in frames(screen, 10.0, 1.6):
             assert_lanes(self, c)
 
@@ -209,12 +264,15 @@ class WeatherAnimationTest(unittest.TestCase):
             self.assertGreater(len(distinct), 1 if kind == "cloud" else 3, kind + " did not animate")
             self.assertEqual(got[-1][1], rest, kind + " did not come back to rest")
 
-    def test_the_sun_pulses_and_never_loses_a_ray(self):
+    def test_the_sun_rays_dim_but_no_led_ever_goes_dark(self):
         screen, rest, got = self.run_idle("sun")
+
+        def lit(c):
+            return {(x, y) for y in range(43, 64) for x in range(40, 64) if c[y][x] != BLACK}
         for _, c in got:
-            # every frame has at least the disc and one pixel of each ray
-            self.assertGreaterEqual(sum(1 for y in range(43, 64) for x in range(40, 64) if c[y][x] != BLACK),
-                                    sum(1 for y in range(43, 64) for x in range(40, 64) if rest[y][x] != BLACK) - 4)
+            self.assertEqual(lit(c), lit(rest))          # same LEDs on in every frame: dimming only
+        colours = {c[y][x] for _, c in got for y in range(43, 64) for x in range(40, 64)} - {BLACK}
+        self.assertEqual(colours, {rgb(ui.SUN), rgb(ui.SUN_MID), rgb(ui.SUN_LOW)})
 
     def test_the_cloud_drifts_one_pixel_right(self):
         screen, rest, got = self.run_idle("cloud")
@@ -223,34 +281,40 @@ class WeatherAnimationTest(unittest.TestCase):
             return min(x for y in range(43, 64) for x in range(40, 64) if c[y][x] == CLOUD)
         self.assertEqual(max(left_edge(c) for _, c in got), left_edge(rest) + 1)
 
-    def test_a_data_refresh_makes_rain_fall_but_does_not_move_the_cloud(self):
+    def test_a_train_leaving_makes_rain_fall_but_does_not_move_the_cloud(self):
         _, state, screen, _ = make("rain")
         rest = render.render(screen.group)
 
         def cloud_pixels(c):
             return {(x, y) for y in range(43, 64) for x in range(40, 64) if c[y][x] == CLOUD}
-        change_times(state, screen, 10.0)
+        first_train_left(state, screen, 10.0)
         got = list(frames(screen, 10.0, 2.6))
         for _, c in got:
             self.assertEqual(cloud_pixels(c), cloud_pixels(rest))
         self.assertGreater(len({repr(c[43:]) for _, c in got}), 3)
         self.assertEqual(got[-1][1][43:], rest[43:])
 
-    def test_a_data_refresh_leaves_a_sun_alone(self):
+    def test_a_plain_countdown_does_not_make_it_rain(self):
+        _, state, screen, _ = make("rain")
+        rest = render.render(screen.group)
+        feed(state, screen, 10.0, COUNTDOWN)
+        for _, c in frames(screen, 10.0, 2.0):
+            self.assertEqual(c[43:], rest[43:])
+
+    def test_a_train_leaving_leaves_a_sun_alone(self):
         _, state, screen, _ = make("sun")
         rest = render.render(screen.group)
-        change_times(state, screen, 10.0)
+        first_train_left(state, screen, 10.0)
         for _, c in frames(screen, 10.0, 2.0):
             self.assertEqual(c[43:], rest[43:])
 
     def test_resting_pictures_are_unchanged_by_the_animation_code(self):
-        # step=None must be exactly the old static drawing
         import displayio
         for kind in ("sun", "partly", "cloud", "rain"):
             a = displayio.Bitmap(40, 22, 8)
             b = displayio.Bitmap(40, 22, 8)
             icons.draw(a, kind, 5, 3, 1, 2, 3)
-            icons.draw(b, kind, 5, 3, 1, 2, 3, None)
+            icons.draw(b, kind, 5, 3, 1, 2, 3, None, True, (1, 4, 5))
             self.assertEqual([a[x, y] for y in range(22) for x in range(40)],
                              [b[x, y] for y in range(22) for x in range(40)])
 

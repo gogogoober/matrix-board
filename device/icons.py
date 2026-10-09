@@ -4,13 +4,14 @@ Colours are palette indices chosen by the caller (see ui.py).
 
 draw(..., step=None) is the resting picture. step = 0, 1, 2... is one frame of a
 short animation (steps(kind) frames, WX_STEP_S apart); the last frame leads back to
-the resting picture. Frames never reach more than 1 px beyond the resting picture
-(the longest sun ray is 1 px longer), so the caller can keep the divider clear.
+the resting picture. No frame draws a pixel the resting picture does not (the sun only
+changes colour, the cloud moves 1 px), so the caller can keep the divider clear.
 """
 
-# sun: the 8 rays clockwise from the top; each pulses in turn (even ones shorten, odd ones grow)
+# sun: the 8 rays clockwise from the top; each in turn dims to a lower brightness and comes
+# back (0 = full, 1 = mid, 2 = low). The LEDs never switch off: that read as flashing.
 RAYS = ((0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1))
-PULSE = (0, 1, 2, 2, 2, 2, 1, 0)
+PULSE = (0, 1, 2, 2, 1, 0)
 # cloud: shifts 1 px right and back
 DRIFT = (0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0)
 RAIN_STEPS = 20   # 5 falls of 4 rows each: ends exactly at the resting picture
@@ -50,16 +51,17 @@ def _cloud(b, x, y, c):
             _put(b, x + xx, y + yy, c)
 
 
-def sun(b, x, y, c_sun, step=None):
+def sun(b, x, y, c_sun, step=None, shades=None):
+    """shades = (full, mid, low) colour indices for the ray pulse; None = no dimming."""
     _disc(b, x + 7, y + 6, 3, c_sun)
     for i, (dx, dy) in enumerate(RAYS):
-        n = 2
-        if step is not None:
+        c = c_sun
+        if step is not None and shades is not None:
             j = step - i   # ray i starts its pulse i steps late
-            if 0 <= j < len(PULSE) and PULSE[j]:
-                n = 1 if i % 2 == 0 else 3
-        for k in range(5, 5 + n):
-            _put(b, x + 7 + dx * k, y + 6 + dy * k, c_sun)
+            if 0 <= j < len(PULSE):
+                c = shades[PULSE[j]]
+        for k in (5, 6):
+            _put(b, x + 7 + dx * k, y + 6 + dy * k, c)
 
 
 def partly(b, x, y, c_sun, c_cloud):
@@ -81,10 +83,10 @@ def rain(b, x, y, c_cloud, c_drop, step=None, drift=True):
             _put(b, x + dx - k // 2, y + 11 + fall + k, c_drop)
 
 
-def draw(b, kind, x, y, c_sun, c_cloud, c_drop, step=None, drift=True):
+def draw(b, kind, x, y, c_sun, c_cloud, c_drop, step=None, drift=True, shades=None):
     """drift=False keeps the cloud still (rain that starts on a data refresh only falls)."""
     if kind == "sun":
-        sun(b, x, y, c_sun, step)
+        sun(b, x, y, c_sun, step, shades)
     elif kind == "partly":
         partly(b, x, y, c_sun, c_cloud)
     elif kind == "cloud":

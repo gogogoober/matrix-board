@@ -56,18 +56,18 @@ class AppSimTest(unittest.TestCase):
         net.fail = True
         a.step(400.0)
         fresh = render.render(screen.group)
-        # stale numbers are dim grey, never the bright yellow
-        brightest = max(max(p) for row in fresh[2:19] for p in row[22:])
-        self.assertLessEqual(brightest, (hw.scale(0x505050) & 255) + 1)
+        # stale numbers are dim, never the bright yellow
+        brightest = max(p[0] for row in fresh[2:19] for p in row[22:])
+        self.assertLessEqual(brightest, (hw.scale(ui.TIME_COLORS_STALE[0]) >> 16) & 255)
 
     def test_never_fetched_shows_dashes_not_garbage(self):
         net, state, screen, a = harness.make()
         net.fail = True
         a.step(0.0)
-        self.assertEqual([l.text for l in screen.cols[0]], ["--", "--"])
+        self.assertEqual(screen.texts[0], ("--", "--"))
         self.assertIsNone(screen.weather_view)
 
-    def test_times_are_white_with_the_first_train_brighter(self):
+    def test_times_are_yellow_with_the_first_train_brighter(self):
         net, state, screen, a = harness.make()
         a.step(0.0)
         screen.animate(5.0)
@@ -75,9 +75,9 @@ class AppSimTest(unittest.TestCase):
 
         def brightest(x0, x1, y0=2, y1=19):
             return max(c[y][x][0] for y in range(y0, y1) for x in range(x0, x1))
-        first, second = brightest(30, 46), brightest(48, 64)
-        self.assertEqual(first, hw.scale(ui.TIME_COLORS[0]) & 255)
-        self.assertEqual(second, hw.scale(ui.TIME_COLORS[1]) & 255)
+        first, second = brightest(24, 43), brightest(43, 64)
+        self.assertEqual(first, (hw.scale(ui.TIME_COLORS[0]) >> 16) & 255)
+        self.assertEqual(second, (hw.scale(ui.TIME_COLORS[1]) >> 16) & 255)
         self.assertGreater(first, second)
         # what the panel can really show: the second column must be at least 2
         # brightness levels below the first, or the difference is not visible
@@ -85,10 +85,11 @@ class AppSimTest(unittest.TestCase):
         q2 = render.quantize((second,) * 3, hw.BIT_DEPTH)[0]
         self.assertGreater(q2, 0)                                   # still visible
         self.assertGreaterEqual(q1 / q2, 2.5, (q1, q2))             # clearly dimmer
-        for y in range(2, 19):                  # white-ish: R == G == B on every lit pixel
-            for x in range(30, 64):
+        for y in range(2, 19):                  # yellow: no blue on any lit pixel
+            for x in range(22, 64):
                 r, g, b = c[y][x]
-                self.assertEqual((r, g), (g, b))
+                self.assertEqual(b, 0)
+                self.assertGreaterEqual(r, g)
 
     def test_quantization_matches_the_known_levels(self):
         # 4-bit panel: scaled 0x3F = level 3, 0x20 = level 2, 0x14 = level 1, 0x0E = off
@@ -155,19 +156,19 @@ class AppSimTest(unittest.TestCase):
     def test_two_columns_two_trains_each(self):
         net, state, screen, a = harness.make()
         a.step(0.0)
-        for row in screen.cols:
+        for row in screen.texts:
             self.assertEqual(len(row), 2)
-            for lbl in row:
-                self.assertNotEqual(lbl.text, "--")
+            for text in row:
+                self.assertNotEqual(text, "--")
         ok = [m for m in state.slots[0].minutes if m >= config.MIN_MINUTES_SHOWN]
-        self.assertEqual([l.text for l in screen.cols[0]], [str(m) for m in ok[:2]])
+        self.assertEqual(list(screen.texts[0]), [str(m) for m in ok[:2]])
 
     def test_trains_under_four_minutes_are_never_shown(self):
         net, state, screen, a = harness.make()
         a.step(0.0)
         # fixture: the 6 downtown has a train at 0 min; it must be skipped
         self.assertEqual(state.slots[1].minutes[0], 0)
-        shown = [int(l.text) for l in screen.cols[1]]
+        shown = [int(t) for t in screen.texts[1]]
         self.assertTrue(all(m >= 4 for m in shown), shown)
         self.assertEqual(shown, state.slots[1].minutes[1:3])   # next two that qualify
 
@@ -178,7 +179,7 @@ class AppSimTest(unittest.TestCase):
         def texts(minutes, now=0.0):
             state.slots[0].set(minutes, 0.0)   # fetched at t=0, drawn at `now`
             screen.render(now)
-            return [l.text for l in screen.cols[0]]
+            return list(screen.texts[0])
 
         self.assertEqual(texts([0, 1, 2, 3, 4, 5]), ["4", "5"])
         self.assertEqual(texts([3, 4, 9]), ["4", "9"])      # 3 hidden, 4 shown
@@ -266,7 +267,7 @@ class AppSimTest(unittest.TestCase):
             screen.render(0.0)
             screen.animate(5.0)
             c = render.render(screen.group)
-            for x0, x1 in ((22, 47), (47, 64)):
+            for x0, x1 in ((22, 43), (43, 64)):
                 xs = [x for y in range(2, 19) for x in range(x0, x1) if c[y][x] != (0, 0, 0)]
                 edges.append(max(xs))
         self.assertLessEqual(abs(edges[0] - edges[2]), 1)   # column 1
