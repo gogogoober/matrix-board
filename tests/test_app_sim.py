@@ -98,6 +98,45 @@ class AppSimTest(unittest.TestCase):
             shown = render.quantize(tuple((hw.scale(rgb) >> s) & 255 for s in (16, 8, 0)), hw.BIT_DEPTH)
             self.assertGreater(max(shown), 0, hex(rgb))
 
+    def _bullet(self, direction):
+        import model
+        stops = ({"slug": "x", "route": "Q", "direction": direction},
+                 {"slug": "y", "route": "6", "direction": direction})
+        state = model.State(stops)
+        screen = ui.Ui(state)
+        return render.render(screen.group)
+
+    def test_direction_v_is_cut_into_the_right_side_of_the_circle(self):
+        for row, cy in ((0, 10), (1, 31)):
+            plain = self._bullet(None)
+            up, down = self._bullet("uptown"), self._bullet("downtown")
+            black = (0, 0, 0)
+            lit = lambda c, x, y: c[y][x] != black
+            # uptown: tip at the top, 3 px wide 2 tall, pointing up
+            self.assertEqual([lit(plain, x, y) for x, y in ((11, cy - 7), (10, cy - 6), (12, cy - 6))], [True] * 3)
+            self.assertEqual([lit(up, x, y) for x, y in ((11, cy - 7), (10, cy - 6), (12, cy - 6))], [False] * 3)
+            self.assertTrue(lit(up, 11, cy - 6))           # the V is a V, not a filled blob
+            # downtown: mirror image at the bottom
+            self.assertEqual([lit(down, x, y) for x, y in ((11, cy + 7), (10, cy + 6), (12, cy + 6))], [False] * 3)
+            self.assertTrue(lit(down, 11, cy + 6))
+            # each direction touches only its own side of the circle
+            self.assertEqual(up[cy + 7], plain[cy + 7])
+            self.assertEqual(down[cy - 7], plain[cy - 7])
+
+    def test_direction_cue_removes_exactly_three_leds_and_nothing_else(self):
+        plain, up, down = self._bullet(None), self._bullet("uptown"), self._bullet("downtown")
+        count = lambda c: sum(1 for y in range(0, 41) for x in range(0, 22) if c[y][x] != (0, 0, 0))
+        self.assertEqual(count(plain) - count(up), 6)      # 3 per circle, two circles
+        self.assertEqual(count(plain) - count(down), 6)
+
+    def test_the_configured_stops_are_both_downtown_on_screen(self):
+        net, state, screen, a = harness.make()
+        a.step(0.0)
+        c = render.render(screen.group)
+        for cy in (10, 31):
+            self.assertEqual(c[cy + 7][11], (0, 0, 0))        # downtown V tip at the bottom
+            self.assertNotEqual(c[cy - 7][11], (0, 0, 0))     # nothing at the top
+
     def test_every_configured_stop_really_loads(self):
         """Regression: route 'Q' was requested in capitals and the (strict,
         like the real one) server answered 404, so the Q row stayed empty."""

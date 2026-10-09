@@ -61,59 +61,61 @@ WIFI_TAIL = (
 BUTTON = '<p><button style="font:inherit;width:100%%;padding:8px">%s</button></form>'
 SEL = 'style="width:100%;font:inherit;margin-bottom:6px"'
 
-# Picks a line -> loads that line's stations from /l/<line> -> relabels the direction.
+# Fills the line menus from /lines, then picks a line -> loads its stations from
+# /l/<line> -> relabels the direction. Keeps the page itself small.
 SCRIPT = (
-    "<script>function L(i){var l=document.getElementById('l'+i),s=document.getElementById('s'+i),"
+    "<script>function X(u,f){var x=new XMLHttpRequest();x.onload=function(){f(x.responseText.split('\\n'))};"
+    "x.open('GET',u);x.send()}"
+    "function L(i){var l=document.getElementById('l'+i),s=document.getElementById('s'+i),"
     "d=document.getElementById('d'+i),o=l.options[l.selectedIndex];"
     "d.options[0].text=o.getAttribute('data-u')||'Uptown';"
     "d.options[1].text=o.getAttribute('data-d')||'Downtown';s.innerHTML='';if(!l.value)return;"
-    "var x=new XMLHttpRequest();x.onload=function(){var r=x.responseText.split('\\n'),"
-    "c=s.getAttribute('data-cur');s.innerHTML='';for(var k=0;k<r.length;k++){if(!r[k])continue;"
-    "var p=r[k].split('|'),e=document.createElement('option');e.value=p[0];e.textContent=p[1];"
-    "if(p[0]==c)e.selected=true;s.appendChild(e)}s.removeAttribute('data-cur')};"
-    "x.open('GET','/l/'+l.value);x.send()}"
-    "for(var i=1;i<3;i++){if(document.getElementById('l'+i).value)L(i)}</script>"
+    "X('/l/'+l.value,function(r){var c=s.getAttribute('data-cur');s.innerHTML='';"
+    "for(var k=0;k<r.length;k++){if(!r[k])continue;var p=r[k].split('|'),e=document.createElement('option');"
+    "e.value=p[0];e.textContent=p[1];if(p[0]==c)e.selected=true;s.appendChild(e)}"
+    "s.removeAttribute('data-cur')})}"
+    "X('/lines',function(r){for(var i=1;i<3;i++){var l=document.getElementById('l'+i),"
+    "c=l.getAttribute('data-cur');for(var k=0;k<r.length;k++){if(!r[k])continue;"
+    "var p=r[k].split('|'),u=p[3].split(','),e=document.createElement('option');"
+    "e.value=p[0];e.textContent=p[4];e.setAttribute('data-u',u[0]);e.setAttribute('data-d',u[1]);"
+    "if(p[0]==c)e.selected=true;l.appendChild(e)}L(i)}})</script>"
 )
 
 
-def _stop_block(i, line_opts, cur):
-    """Line, station and direction pickers for stop number i. cur = current stop or None."""
-    line = picks.line_of(cur) if cur else ""
-    opts = line_opts.replace('value="%s"' % esc(line), 'value="%s" selected' % esc(line), 1) if line else line_opts
+def _stop_block(i, cur):
+    """Line, station and direction pickers for stop number i (filled in by SCRIPT).
+    cur = the current stop dict or None."""
+    d = cur["direction"] if cur else "uptown"
     return (
         "<p><b>Stop %d</b><br>" % i
-        + '<select name=l%d id=l%d onchange="L(%d)" %s><option value="">Line%s</select>' % (i, i, i, SEL, opts)
+        + '<select name=l%d id=l%d onchange="L(%d)" %s%s><option value="">Line</select>' % (
+            i, i, i, SEL, ' data-cur="%s"' % esc(picks.line_of(cur)) if cur else "")
         + '<select name=s%d id=s%d %s%s></select>' % (i, i, SEL, ' data-cur="%s"' % esc(cur["slug"]) if cur else "")
         + '<select name=d%d id=d%d %s><option value=uptown%s>Uptown<option value=downtown%s>Downtown</select>' % (
-            i, i, SEL,
-            " selected" if not cur or cur["direction"] == "uptown" else "",
-            " selected" if cur and cur["direction"] == "downtown" else "")
+            i, i, SEL, " selected" if d == "uptown" else "", " selected" if d == "downtown" else "")
     )
 
 
-def page(nets, message=None, stop_lines=None, current=()):
-    """The whole setup page as a str. About 1 KB plus ~40 bytes per network.
-    stop_lines (from picks.lines) adds two stop pickers, about 3.5 KB more."""
+def page(nets, message=None, stops=False, current=()):
+    """The whole setup page as a str, about 1 KB plus ~40 bytes per network.
+    stops=True adds two stop pickers (~1.6 KB); their menus load from /lines and /l/<line>."""
     parts = [PAGE_HEAD]
     if message:
         parts.append('<p style="color:#b00">' + esc(message))
     parts.append(FORM_HEAD)
     parts.append('<select name=n style="width:100%;font:inherit">')
-    if stop_lines is not None:
+    if stops:
         parts.append('<option value="">(keep current Wi-Fi)')
     for ssid, _rssi in nets:
         e = esc(ssid)
         parts.append('<option value="%s">%s' % (e, e))
     parts.append("</select>")
     parts.append(WIFI_TAIL)
-    if stop_lines is not None:
-        line_opts = "".join('<option value="%s" data-u="%s" data-d="%s">%s' % (
-            esc(ln[0]), esc(ln[3]), esc(ln[4]), esc(ln[5])) for ln in stop_lines)
+    if stops:
         for i in (1, 2):
-            cur = current[i - 1] if len(current) >= i else None
-            parts.append(_stop_block(i, line_opts, cur))
-    parts.append(BUTTON % ("Save" if stop_lines is not None else "Connect"))
-    if stop_lines is not None:
+            parts.append(_stop_block(i, current[i - 1] if len(current) >= i else None))
+    parts.append(BUTTON % ("Save" if stops else "Connect"))
+    if stops:
         parts.append(SCRIPT)
     return "".join(parts)
 
@@ -289,17 +291,25 @@ class Server:
         head = ("HTTP/1.1 200 OK\r\nContent-Type: %s; charset=utf-8\r\nContent-Length: %d\r\n"
                 "Cache-Control: no-store\r\nConnection: close\r\n\r\n" % (ctype, len(data)))
         self.esp.socket_write(c, head.encode("utf-8"))
-        for i in range(0, len(data), 1024):
-            self.esp.socket_write(c, data[i:i + 1024])
+        for i in range(0, len(data), 512):
+            self.esp.socket_write(c, data[i:i + 512])
+            time.sleep(0.01)   # let the ESP32 drain before the next chunk
 
     def _page(self, message=None):
-        lines = None
-        if self.stop_base is not None:
-            try:
-                lines = picks.lines(self.stop_base)
-            except Exception as e:   # no station data: Wi-Fi-only page
-                print("portal: no stop data", type(e).__name__)
-        return page(self.nets, message, lines, self.current)
+        stops = self.stop_base is not None
+        return page(self.nets, message, stops, self.current)
+
+    def _data(self, fn, line=None):
+        """Station data as text; '' if the line is unknown or the files are missing."""
+        try:
+            if line is None:
+                return fn(self.stop_base)
+            if picks.line_info(line, self.stop_base) is None:
+                return ""
+            return fn(line, self.stop_base)
+        except Exception as e:
+            print("portal: no stop data", type(e).__name__)
+            return ""
 
     def _submission(self, form):
         """(ssid, password, stops, error)."""
@@ -328,12 +338,10 @@ class Server:
         self.requests += 1
         self.last_path = path[:40]
         found = None
-        if method == "GET" and path.startswith("/l/") and self.stop_base is not None:
-            line = path[3:].split("?")[0]
-            if picks.line_info(line, self.stop_base) is None:
-                self._send(c, "", "text/plain")
-            else:
-                self._send(c, picks.station_text(line, self.stop_base), "text/plain")
+        if method == "GET" and path == "/lines" and self.stop_base is not None:
+            self._send(c, self._data(picks.lines_text), "text/plain")
+        elif method == "GET" and path.startswith("/l/") and self.stop_base is not None:
+            self._send(c, self._data(picks.station_text, path[3:].split("?")[0]), "text/plain")
         elif method == "POST" and path.startswith("/s"):
             ssid, password, stops, error = self._submission(parse_form(body))
             if error is None:

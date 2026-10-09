@@ -52,6 +52,12 @@ def lines(base=BASE):
     return out
 
 
+def lines_text(base=BASE):
+    """lines.txt as served for /lines (about 1 KB)."""
+    with open(base + "/lines.txt") as f:
+        return f.read()
+
+
 def line_info(slug, base=BASE):
     for ln in lines(base):
         if ln[0] == slug:

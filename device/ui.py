@@ -85,6 +85,21 @@ def column_text(minutes, i):
     return str(m if m <= MAX_SHOWN else MAX_SHOWN)
 
 
+def _draw_direction(bitmap, cx, cy, direction):
+    """Tiny V cut out of the circle: at the top pointing up for uptown, at the
+    bottom pointing down for downtown (3 px wide, 2 tall, tip 1 px in from the
+    edge)."""
+    if direction == "uptown":
+        tip, step = cy - BULLET_R + 1, 1
+    elif direction == "downtown":
+        tip, step = cy + BULLET_R - 1, -1
+    else:
+        return
+    bitmap[cx, tip] = 0
+    bitmap[cx - 1, tip + step] = 0
+    bitmap[cx + 1, tip + step] = 0
+
+
 class Ui:
     def __init__(self, state):
         self.state = state
@@ -97,6 +112,7 @@ class Ui:
             color = LINE_COLORS.get(slot.route, DEFAULT_LINE)
             self.palette[2 + i] = _sc(color)
             _draw_circle(self.bitmap, BULLET_X, ROW_Y[i] + 10, BULLET_R, 2 + i)
+            _draw_direction(self.bitmap, BULLET_X, ROW_Y[i] + 10, slot.direction)
         for y in (ROW_Y[1] - 1, ROW_Y[2] - 1):
             for x in range(0, hw.WIDTH, 2):
                 self.bitmap[x, y] = 1

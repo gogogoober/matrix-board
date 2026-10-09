@@ -128,16 +128,18 @@ class PortalStopsTest(unittest.TestCase):
         _, body = self.get(esp, srv, "/")
         for name in ("l1", "s1", "d1", "l2", "s2", "d2"):
             self.assertIn("name=" + name, body)
-        self.assertIn('<option value="q" data-u="Uptown" data-d="Downtown">Q', body)
-        self.assertIn('value="l" data-u="Manhattan" data-d="Brooklyn"', body)
-        self.assertIn("S Franklin Av", body)
         self.assertIn("(keep current Wi-Fi)", body)
-        self.assertLess(len(body), 8000)
+        self.assertLess(len(body), 3000)      # the line menu is not inline: the ESP32 chokes on big pages
+        _, lines = self.get(esp, srv, "/lines")
+        self.assertIn("q|Q|F6BC26|Uptown,Downtown|Q", lines)
+        self.assertIn("l|L|7C858C|Manhattan,Brooklyn|L", lines)
+        self.assertIn("|S Franklin Av", lines)
 
     def test_page_preselects_current_stops(self):
         esp, srv = self.make()
         _, body = self.get(esp, srv, "/")
-        self.assertIn('value="q" selected', body)
+        self.assertIn('id=l1', body)
+        self.assertIn('data-cur="q"', body)
         self.assertIn('data-cur="%s"' % Q_96, body)
         self.assertIn("<option value=downtown selected>", body)
 
@@ -190,14 +192,23 @@ class PortalStopsTest(unittest.TestCase):
             self.assertIsNone(srv.poll(), body)
             self.assertIn(b"<select name=l1", esp.written[c], body)
 
-    def test_stop_data_missing_falls_back_to_wifi_only_page(self):
+    def test_missing_stop_data_gives_empty_menus_not_a_crash(self):
         esp = FakeEsp()
         srv = portal.Server(esp, [("Home", -40)], read_timeout=0.05, stop_base=os.path.join(ROOT, "nope"))
+        srv.start()
+        for path in ("/", "/lines", "/l/q"):
+            c = esp.connect_client(b"GET " + path.encode() + b" HTTP/1.1\r\n\r\n")
+            self.assertIsNone(srv.poll())
+            self.assertIn(b"200 OK", esp.written[c])
+        self.assertIn(b"name=p type=password", esp.written[c - 2])
+
+    def test_wifi_only_server_has_no_stop_pickers(self):
+        esp = FakeEsp()
+        srv = portal.Server(esp, [("Home", -40)], read_timeout=0.05, stop_base=None)
         srv.start()
         c = esp.connect_client(b"GET / HTTP/1.1\r\n\r\n")
         srv.poll()
         self.assertNotIn(b"name=l1", esp.written[c])
-        self.assertIn(b"name=p type=password", esp.written[c])
 
     def test_long_wifi_plus_two_stops_fits_in_the_request_limits(self):
         wifi = "n=%s&m=&p=%s" % ("%C3%A9" * 16, "%21" * 63)
