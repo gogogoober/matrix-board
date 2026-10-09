@@ -43,7 +43,7 @@ frozen panel. Written 2026-10-09 from a full read of `device/`.
 ## Thresholds (all in `device/config.py`)
 
 `RETRY_S` 15 and `RETRY_MAX_S` 300; `HTTP_TIMEOUT_S` 12; `MAX_RESPONSE_B` 20000;
-`RADIO_RESET_AFTER_S` 300; `REBOOT_AFTER_S` 600 (x2 per failed reboot, max
+`RADIO_RESET_AFTER_S` 900; `REBOOT_AFTER_S` 1500 (x2 per failed reboot, max
 `REBOOT_AFTER_MAX_S` 3600); `RESTART_EVERY_S` 21600; `HEALTHY_AFTER_S` 120;
 `CRASHES_CLEAR_STOPS` 3; `CRASHES_CLEAR_ALL` 6; `WIFI_CONNECT_TRIES` 3;
 `WIFI_COOLDOWN_S` 20.

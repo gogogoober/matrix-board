@@ -83,11 +83,11 @@ class LivenessTest(unittest.TestCase):
         self.assertEqual(r.reboots, ["nodata"])
 
     def test_reboot_waits_longer_after_reboots_that_did_not_help(self):
-        r = Rig(quiet_reboots=2)                             # third try: 40 minutes
+        r = Rig(quiet_reboots=2)                             # third try: 1500 s doubled twice, capped at REBOOT_AFTER_MAX_S (1 hour)
         r.a.step(0.0)
-        self.run_down(r, 2300)
+        self.run_down(r, config.REBOOT_AFTER_MAX_S - 100)
         self.assertEqual(r.reboots, [])
-        self.run_down(r, 2500)
+        self.run_down(r, config.REBOOT_AFTER_MAX_S + 100)
         self.assertEqual(r.reboots, ["nodata"])
 
     def test_good_data_cancels_everything(self):

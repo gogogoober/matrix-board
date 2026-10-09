@@ -69,7 +69,9 @@ class AppSimTest(unittest.TestCase):
         slot = state.slots[0]
         slot.set([30, 40], 0.0)
         base = 30
-        self.assertEqual(config.ARRIVALS_REFRESH_S, 60)
+        self.assertEqual(config.ARRIVALS_REFRESH_S, 300)
+        self.assertGreater(config.STALE_AFTER_S, config.ARRIVALS_REFRESH_S)    # a normal gap is not 'stale'
+        self.assertGreater(config.RADIO_RESET_AFTER_S, 2 * config.ARRIVALS_REFRESH_S)
         seen = [slot.shown(t, 0)[0] for t in range(0, 300)]
         self.assertEqual(seen[0], base)
         self.assertEqual(seen[59], base)                       # still the same just before a minute
