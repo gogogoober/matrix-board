@@ -65,7 +65,20 @@ def render(group, width=64, height=64):
     return canvas
 
 
-def to_image(canvas, cell=10, leds=True, gain=1.0):
+def quantize(rgb, bit_depth):
+    """What the panel can really show: displayio keeps RGB565, then the matrix
+    driver keeps the top bit_depth bits of each channel (so at bit_depth 4 a
+    channel has 16 levels, and a value below 16 is black). Assumption, to be
+    confirmed against a photo of a brightness ramp."""
+    r, g, b = rgb
+    levels = (1 << bit_depth) - 1
+    rq = (r >> 3) >> (5 - bit_depth)
+    gq = (g >> 2) >> (6 - bit_depth)
+    bq = (b >> 3) >> (5 - bit_depth)
+    return tuple(int(v * 255 / levels) for v in (rq, gq, bq))
+
+
+def to_image(canvas, cell=10, leds=True, gain=1.0, bit_depth=None):
     """Upscale; with leds=True each pixel is a round LED on a dark grid.
 
     gain brightens the picture like camera exposure (the panel itself is
@@ -75,7 +88,8 @@ def to_image(canvas, cell=10, leds=True, gain=1.0):
     d = ImageDraw.Draw(img)
     for y in range(h):
         for x in range(w):
-            r, g, b = (min(255, int(c * gain)) for c in canvas[y][x])
+            px = quantize(canvas[y][x], bit_depth) if bit_depth else canvas[y][x]
+            r, g, b = (min(255, int(c * gain)) for c in px)
             if leds:
                 # dim "off" LEDs stay visible so the grid reads like the panel
                 color = (r, g, b) if (r or g or b) else (28, 28, 28)

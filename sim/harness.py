@@ -62,7 +62,7 @@ def make(net=None):
 def snapshot(screen, path, cell=10):
     canvas = render.render(screen.group)
     import hw
-    render.to_image(canvas, cell=cell, gain=1.0 / hw.BRIGHTNESS_CAP).save(path)
+    render.to_image(canvas, cell=cell, gain=1.0 / hw.BRIGHTNESS_CAP, bit_depth=hw.BIT_DEPTH).save(path)
     return canvas
 
 
@@ -79,7 +79,8 @@ class FakeWifi:
         self.nets = [("HomeNet", -40), ("Cafe", -70)]
         self.fail_scan = False
         self.fail_start = False
-        self.submit = None       # (ssid, password) delivered by the next portal_poll
+        self.submit = None       # (ssid, password, stops) delivered by the next portal_poll
+        self.saved_picks = None
         self.join_ok = True
         self.calls = []
         self.saved = None
@@ -102,6 +103,10 @@ class FakeWifi:
 
     def portal_stop(self, settle=0.5):
         self.calls.append("stop")
+
+    def save_picks(self, stops):
+        self.calls.append("save_picks")
+        self.saved_picks = stops
 
     def join(self, ssid, password):
         self.calls.append("join")

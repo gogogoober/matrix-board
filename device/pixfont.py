@@ -71,12 +71,30 @@ def draw_text(bitmap, s, x, y, color, font=GLYPHS, k=1, gap=1):
     _walk(s, x, y, k, gap, lambda c, px, py: _put(bitmap, px, py, c), color, font)
 
 
-def draw_big_centered(bitmap, s, cx, y, color, max_width=19):
+def draw_big_centered(bitmap, s, cx, y, color, max_width=19, rows=(2, 2, 2, 2, 2)):
     """Temperature in the 4x5 font, centred on column cx. Double size when it
-    fits max_width (two digits = 17 px), else single size."""
-    k = 2 if text_width(s, 2, 1, BIG) <= max_width else 1
-    x = cx - text_width(s, k, 1, BIG) // 2
-    _walk(s, x, y, k, 1, lambda c, px, py: _put(bitmap, px, py, c), color, BIG)
+    fits max_width (two digits = 17 px wide), else single size.
+
+    rows = pixel height of each of the 5 glyph rows at double size (default
+    10 tall). A shorter set such as (2, 2, 1, 2, 2) squishes the number
+    vertically without changing its width.
+    """
+    if text_width(s, 2, 1, BIG) > max_width:
+        x = cx - text_width(s, 1, 1, BIG) // 2
+        _walk(s, x, y, 1, 1, lambda c, px, py: _put(bitmap, px, py, c), color, BIG)
+        return
+    x = cx - text_width(s, 2, 1, BIG) // 2
+    for ch in s:
+        glyph = BIG[ch]
+        top = y
+        for r in range(5):
+            for q in range(4):
+                if glyph[r * 4 + q] == "1":
+                    for dy in range(rows[r]):
+                        _put(bitmap, x + q * 2, top + dy, color)
+                        _put(bitmap, x + q * 2 + 1, top + dy, color)
+            top += rows[r]
+        x += 9
 
 
 def draw_halo(bitmap, s, x, y, color, halo=0, gap=1):

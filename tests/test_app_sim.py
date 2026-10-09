@@ -8,6 +8,7 @@ from sim import harness, render  # noqa: E402
 
 import config  # noqa: E402
 import hw  # noqa: E402
+import ui  # noqa: E402
 
 
 def lit(canvas, x0, y0, x1, y1):
@@ -64,6 +65,38 @@ class AppSimTest(unittest.TestCase):
         a.step(0.0)
         self.assertEqual([l.text for l in screen.cols[0]], ["--", "--"])
         self.assertIsNone(screen.weather_view)
+
+    def test_times_are_white_with_the_first_train_brighter(self):
+        net, state, screen, a = harness.make()
+        a.step(0.0)
+        c = render.render(screen.group)
+
+        def brightest(x0, x1, y0=2, y1=19):
+            return max(c[y][x][0] for y in range(y0, y1) for x in range(x0, x1))
+        first, second = brightest(30, 46), brightest(48, 64)
+        self.assertEqual(first, hw.scale(ui.TIME_COLORS[0]) & 255)
+        self.assertEqual(second, hw.scale(ui.TIME_COLORS[1]) & 255)
+        self.assertGreater(first, second)
+        # what the panel can really show: the second column must be at least 2
+        # brightness levels below the first, or the difference is not visible
+        q1 = render.quantize((first,) * 3, hw.BIT_DEPTH)[0]
+        q2 = render.quantize((second,) * 3, hw.BIT_DEPTH)[0]
+        self.assertGreater(q2, 0)                                   # still visible
+        self.assertGreaterEqual(q1 / q2, 2.5, (q1, q2))             # clearly dimmer
+        for y in range(2, 19):                  # white-ish: R == G == B on every lit pixel
+            for x in range(30, 64):
+                r, g, b = c[y][x]
+                self.assertEqual((r, g), (g, b))
+
+    def test_quantization_matches_the_known_levels(self):
+        # 4-bit panel: scaled 0x3F = level 3, 0x20 = level 2, 0x14 = level 1, 0x0E = off
+        lv = lambda v: render.quantize((v, v, v), 4)[0] * 15 // 255
+        self.assertEqual([lv(0x3F), lv(0x33), lv(0x20), lv(0x14), lv(0x0E)], [3, 3, 2, 1, 0])
+
+    def test_every_time_colour_is_visible_on_the_panel(self):
+        for rgb in ui.TIME_COLORS + ui.TIME_COLORS_STALE:
+            shown = render.quantize(tuple((hw.scale(rgb) >> s) & 255 for s in (16, 8, 0)), hw.BIT_DEPTH)
+            self.assertGreater(max(shown), 0, hex(rgb))
 
     def test_every_configured_stop_really_loads(self):
         """Regression: route 'Q' was requested in capitals and the (strict,
@@ -148,6 +181,17 @@ class AppSimTest(unittest.TestCase):
             self.assertEqual(cols(43, 53), circle, hi)   # high row
             self.assertEqual(cols(54, 64), circle, lo)   # low row
 
+    def test_high_is_10_rows_and_low_is_9_and_clears_the_bottom_edge(self):
+        for hi, lo in ((71, 52), (99, 10), (88, 88), (35, 20)):
+            screen, c = self._weather(0, 0, hi=hi, lo=lo)
+
+            def rows(y0, y1):
+                return [y for y in range(y0, y1) if any(c[y][x] != (0, 0, 0) for x in range(0, 21))]
+            hi_rows, lo_rows = rows(42, 54), rows(54, 64)
+            self.assertEqual((hi_rows[0], hi_rows[-1]), (43, 52), hi)    # high: unchanged, 10 tall
+            self.assertEqual((lo_rows[0], lo_rows[-1]), (54, 62), lo)    # low: 9 tall
+            self.assertTrue(all(c[63][x] == (0, 0, 0) for x in range(64)))   # bottom row empty
+
     def test_one_and_three_digit_and_negative_temperatures_stay_inside(self):
         for hi, lo in ((5, 0), (100, -5), (-12, -20)):
             screen, c = self._weather(0, 0, hi=hi, lo=lo)
@@ -158,7 +202,6 @@ class AppSimTest(unittest.TestCase):
 
     def test_weather_numbers_use_full_row_without_overflow(self):
         _, c = self._weather(0, 0, hi=100, lo=-5)
-        self.assertGreater(sum(1 for x in range(64) if c[63][x] != (0, 0, 0)), 0)
         self.assertEqual(len(c), 64)
 
     def test_pop_label_cuts_into_icon_with_a_dark_halo(self):
