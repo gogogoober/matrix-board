@@ -1,4 +1,6 @@
-# RAM reduction plan (draft, 2026-10-09, NOT implemented)
+# RAM reduction plan (2026-10-09; items 1-5 implemented on branch `ram-reduction`, laptop-tested only, NOT deployed; item 6 deliberately not done)
+
+Deviations from the plan below: item 1 uses `draw_cols` (1-2-1 columns) for two-letter routes (6X, 7X, SI) because k=2 did not fit the circle; item 3 skips a stop on a retry only while its data is younger than `ARRIVALS_REFRESH_S` (otherwise a persistently failing stop would let the healthy one go stale); item 4 uses a `Slot.version` counter plus a per-row `until` time. Letter legibility is lower than the old terminal font (M, N, W, B are blobby in the sim): judge on the board. Board `mem_free` before/after is still to be recorded.
 
 Goal: raise the ~56 KB free after startup (keep `mem_free` above ~50 KB for HTTPS)
 without a redesign. Only low-hanging fruit. The fetch queue is deliberately out of scope.

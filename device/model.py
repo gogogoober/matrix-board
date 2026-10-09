@@ -8,10 +8,12 @@ class Slot:
         self.direction = direction
         self.minutes = None   # list of ints at fetch time, or None = never fetched
         self.fetched = None   # monotonic seconds of the last good fetch
+        self.version = 0      # counts set() calls: lets the UI skip a row whose data did not change
 
     def set(self, minutes, now):
         self.minutes = minutes
         self.fetched = now
+        self.version += 1
 
     def age(self, now):
         return None if self.fetched is None else now - self.fetched

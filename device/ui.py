@@ -63,6 +63,9 @@ DEFAULT_LINE = 0x808183
 # Anything that scales below 16 (0x303030 -> 12) is BLACK on the real panel.
 TIME_COLORS = (0xFFD000, 0x504000)
 TIME_COLORS_STALE = (0x504000, 0x504000)
+TIME_PAL = tuple(hw.scale(c) for c in TIME_COLORS)   # scaled once: render() runs 10x a second
+TIME_PAL_STALE = tuple(hw.scale(c) for c in TIME_COLORS_STALE)
+FOREVER = 1e30
 STALE = 0x505050   # weather row placeholder when there is no data
 WHITE = 0xFFFFFF
 BLUE = 0x40A0FF
@@ -142,10 +145,14 @@ def _draw_direction(bitmap, cx, cy, direction):
 
 def _draw_route(bitmap, cx, cy, route):
     """Route letter cut out of the circle: transparent pixels, so the black mask layer
-    underneath shows through. 3x5 glyphs at double size are the 2 px bold stroke."""
+    underneath shows through. One letter: 3x5 glyphs at double size (a 2 px stroke). Two
+    (6X, 7X, SI): the narrower 1-2-1 columns, so both fit inside the circle."""
     text = route[:2]
-    x = cx - pixfont.text_width(text, 2, 2) // 2
-    pixfont.draw_text(bitmap, text, x, cy - 5, 0, k=2, gap=2)
+    if len(text) == 2 and all(ch in pixfont.GLYPHS and pixfont.GLYPHS[ch] >> 25 == 3 for ch in text):
+        cols = (1, 2, 1)
+        pixfont.draw_cols(bitmap, text, cx - pixfont.cols_width(text, cols) // 2, cy - 5, 0, cols)
+        return
+    pixfont.draw_text(bitmap, text, cx - pixfont.text_width(text, 2, 2) // 2, cy - 5, 0, k=2, gap=2)
 
 
 class Ui:
@@ -203,6 +210,8 @@ class Ui:
         self.texts = [("--", "--")] * n     # what each row shows now
         self._target = [("--", "--")] * n   # the texts the row is heading for
         self._first = [None] * n            # first shown train (minutes) at the last change
+        self._seen = [-1] * n               # slot.version each row was last drawn from (-1: never)
+        self._until = [0.0] * n             # that row is up to date until this time
         self.wbitmap = displayio.Bitmap(hw.WIDTH, W_H, 8)
         wpal = displayio.Palette(8)
         for i, rgb in ((W_BLACK, 0x000000), (W_WHITE, WHITE), (W_HI, ORANGE), (W_LO, ICE),
@@ -221,23 +230,37 @@ class Ui:
         self._flash_until = 0.0
         self.weather_view = None   # what is drawn now: (hi, lo, kind, pop_label, temp) or None
         self._weather_drawn = False
+        self._wx_seen = None
 
     def flash(self, now, seconds):
         self._flash_until = now + seconds
         self.flash_tile.hidden = False
 
     def render(self, now):
+        """Cheap when nothing changed: a row is only recomputed after a new fetch, at the
+        next minute boundary (the countdown) or when its data turns stale."""
         if not self.flash_tile.hidden and now >= self._flash_until:
             self.flash_tile.hidden = True
         for i, slot in enumerate(self.state.slots):
-            age = slot.age(now)
-            fresh = age is not None and age <= config.STALE_AFTER_S
-            colors = TIME_COLORS if fresh else TIME_COLORS_STALE
+            if slot.version == self._seen[i] and now < self._until[i]:
+                continue
+            fetched = slot.fetched
+            self._seen[i] = slot.version
+            if fetched is None:
+                fresh = False
+                self._until[i] = FOREVER
+            else:
+                age = now - fetched
+                fresh = age <= config.STALE_AFTER_S
+                until = fetched + (int(age // 60) + 1) * 60
+                if fresh and fetched + config.STALE_AFTER_S < until:
+                    until = fetched + config.STALE_AFTER_S
+                self._until[i] = until
+            colors = TIME_PAL if fresh else TIME_PAL_STALE
             shown = slot.shown(now, config.MIN_MINUTES_SHOWN)
             for n in range(2):
-                color = _sc(colors[n])
-                if self.tpalettes[i][1 + n] != color:
-                    self.tpalettes[i][1 + n] = color
+                if self.tpalettes[i][1 + n] != colors[n]:
+                    self.tpalettes[i][1 + n] = colors[n]
             self._want(i, (column_text(shown, 0), column_text(shown, 1)),
                        shown[0] if shown else None, now)
         self._render_weather(now)
@@ -315,6 +338,9 @@ class Ui:
 
     def _render_weather(self, now):
         wx = self.state.weather
+        if self._weather_drawn and wx is self._wx_seen:
+            return   # set_weather replaces the dict: the same object means the same data
+        self._wx_seen = wx
         if wx is None:
             view = None
         else:

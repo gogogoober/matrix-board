@@ -11,8 +11,9 @@ os.makedirs(OUT, exist_ok=True)
 
 net, state, screen, a = harness.make()
 a.step(0.0)
+a.step(float(config.WEATHER_FIRST_S))   # the first weather fetch is a few seconds after the arrivals
 harness.snapshot(screen, os.path.join(OUT, "1_fresh_weather_a.png"))
-a.step(5.0)
+a.step(config.WEATHER_FIRST_S + 5.0)
 harness.snapshot(screen, os.path.join(OUT, "2_fresh_weather_b.png"))
 net.fail = True
 a.step(240.0)   # 4 minutes later, network down: numbers count down, dim
