@@ -93,17 +93,11 @@ class PanelColoursTest(unittest.TestCase):
         self.assertGreater(self.lit(ui.DIVIDER), 0)
 
     def test_every_drawn_colour_is_visible(self):
-        for name in ("DIVIDER", "ORANGE", "ICE", "SUN", "SUN_MID", "SUN_LOW", "CLOUD", "DROP",
+        for name in ("DIVIDER", "ORANGE", "ICE", "SUN", "CLOUD", "DROP",
                      "STALE", "WHITE", "BLUE"):
             self.assertGreater(self.lit(getattr(ui, name)), 0, name)
         for c in ui.LINE_COLORS.values():
             self.assertGreater(self.lit(c), 0, hex(c))
-
-    def test_the_sun_rays_have_three_distinct_brightness_levels(self):
-        full, mid, low = (render.quantize(rgb(c), hw.BIT_DEPTH)[0] for c in (ui.SUN, ui.SUN_MID, ui.SUN_LOW))
-        self.assertGreater(full, mid)
-        self.assertGreater(mid, low)
-        self.assertGreater(low, 0)
 
 
 class SlideTest(unittest.TestCase):
@@ -262,8 +256,10 @@ class WeatherAnimationTest(unittest.TestCase):
         got = list(frames(screen, 10.0, icons.steps(kind) * config.WX_STEP_S + 0.5, dt=0.05))
         return screen, rest, got
 
+    ANIMATED = ("cloud", "rain")
+
     def test_every_frame_stays_inside_its_lane(self):
-        for kind in WEATHER:
+        for kind in self.ANIMATED:
             screen, rest, got = self.run_idle(kind)
             for t, c in got:
                 assert_lanes(self, c)
@@ -272,21 +268,18 @@ class WeatherAnimationTest(unittest.TestCase):
                         self.assertEqual(c[y][x], rest[y][x], "%s: temperature changed" % kind)
 
     def test_the_icon_really_moves_then_returns_to_rest(self):
-        for kind in WEATHER:
+        for kind in self.ANIMATED:
             screen, rest, got = self.run_idle(kind)
             distinct = {repr(c[43:]) for _, c in got}
             self.assertGreater(len(distinct), 1 if kind == "cloud" else 3, kind + " did not animate")
             self.assertEqual(got[-1][1], rest, kind + " did not come back to rest")
 
-    def test_the_sun_rays_dim_but_no_led_ever_goes_dark(self):
-        screen, rest, got = self.run_idle("sun")
-
-        def lit(c):
-            return {(x, y) for y in range(43, 64) for x in range(40, 64) if c[y][x] != BLACK}
-        for _, c in got:
-            self.assertEqual(lit(c), lit(rest))          # same LEDs on in every frame: dimming only
-        colours = {c[y][x] for _, c in got for y in range(43, 64) for x in range(40, 64)} - {BLACK}
-        self.assertEqual(colours, {rgb(ui.SUN), rgb(ui.SUN_MID), rgb(ui.SUN_LOW)})
+    def test_the_sun_never_animates(self):
+        _, state, screen, _ = make("sun")
+        rest = render.render(screen.group)
+        screen.start_idle(10.0)
+        for _, c in frames(screen, 10.0, 2.0):
+            self.assertEqual(c, rest)
 
     def test_the_cloud_drifts_one_pixel_right(self):
         screen, rest, got = self.run_idle("cloud")
@@ -328,7 +321,7 @@ class WeatherAnimationTest(unittest.TestCase):
             a = displayio.Bitmap(40, 22, 8)
             b = displayio.Bitmap(40, 22, 8)
             icons.draw(a, kind, 5, 3, 1, 2, 3)
-            icons.draw(b, kind, 5, 3, 1, 2, 3, None, True, (1, 4, 5))
+            icons.draw(b, kind, 5, 3, 1, 2, 3, None, True)
             self.assertEqual([a[x, y] for y in range(22) for x in range(40)],
                              [b[x, y] for y in range(22) for x in range(40)])
 

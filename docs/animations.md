@@ -11,7 +11,7 @@ Plan and the reasoning behind it: `docs/animations-plan.md`. Look at them with
 | Arrival times | the **first train leaves** (its number drops below 4 and the second becomes the first, or a fetch shows the first number jumping up by 2 or more) | both columns of the row slide LEFT behind the bullet (0.38 s, accelerating), then the new ones slide in from the RIGHT (0.52 s, easing out). Row 2 starts 0.14 s after row 1. First data only slides in. |
 | Times, plain countdown | 5 to 4, a fetch with the same trains (+/-1) | the digits just change, no animation |
 | Rain | same moment as a slide, and on the idle timer | the two streaks fall 4 rows, 5 times (2 s). On a slide the cloud stays put. |
-| Sun | idle timer | the 8 rays dim in turn, clockwise (full, mid, low, mid, full). No LED ever goes dark; the first version shortened and lengthened rays and that read as flashing. |
+| Sun | never | removed after seeing it on the panel: shortening the rays flashed LEDs, and dimming them in turn still looked bad. The sun is static. |
 | Cloud | idle timer | drifts 1 px right and back (1.6 s) |
 | Partly cloudy | never | static |
 

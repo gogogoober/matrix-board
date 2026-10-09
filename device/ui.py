@@ -68,13 +68,11 @@ DIVIDER = 0x404040   # scales to exactly 16: level 1, the dimmest step the panel
 ORANGE = 0xFF8A20
 ICE = 0x60B0FF
 SUN = 0xFFD000
-SUN_MID = 0xA88800   # scale to levels 3, 2, 1: the rays dim and brighten, they never go dark
-SUN_LOW = 0x544400
 CLOUD = 0xA8A8B8
 DROP = 0x3090FF
 
 # palette indices of the weather bitmap
-W_BLACK, W_WHITE, W_HI, W_LO, W_SUN, W_CLOUD, W_DROP, W_DIM, W_SUN_MID, W_SUN_LOW = range(10)
+W_BLACK, W_WHITE, W_HI, W_LO, W_SUN, W_CLOUD, W_DROP, W_DIM = range(8)
 LOW_ROWS = (2, 2, 1, 2, 2)   # 9 px tall, same width as the high
 W_Y = 42   # screen row where the weather bitmap starts
 W_H = 22
@@ -170,11 +168,10 @@ class Ui:
         self.texts = [("--", "--")] * n     # what each row shows now
         self._target = [("--", "--")] * n   # the texts the row is heading for
         self._first = [None] * n            # first shown train (minutes) at the last change
-        self.wbitmap = displayio.Bitmap(hw.WIDTH, W_H, 10)
-        wpal = displayio.Palette(10)
+        self.wbitmap = displayio.Bitmap(hw.WIDTH, W_H, 8)
+        wpal = displayio.Palette(8)
         for i, rgb in ((W_BLACK, 0x000000), (W_WHITE, WHITE), (W_HI, ORANGE), (W_LO, ICE),
-                       (W_SUN, SUN), (W_CLOUD, CLOUD), (W_DROP, DROP), (W_DIM, STALE),
-                       (W_SUN_MID, SUN_MID), (W_SUN_LOW, SUN_LOW)):
+                       (W_SUN, SUN), (W_CLOUD, CLOUD), (W_DROP, DROP), (W_DIM, STALE)):
             wpal[i] = _sc(rgb)
         self.group.append(displayio.TileGrid(self.wbitmap, pixel_shader=wpal, x=0, y=W_Y))
         # white line across the top row, shown briefly on a double tap
@@ -350,8 +347,7 @@ class Ui:
     def _draw_icon(self, step):
         """Icon and rain-chance label, resting (step None) or one animation frame."""
         hi, lo, kind, pop = self.weather_view
-        icons.draw(self.wbitmap, kind, 45, 3, W_SUN, W_CLOUD, W_DROP, step, self._wx_drift,
-                   (W_SUN, W_SUN_MID, W_SUN_LOW))
+        icons.draw(self.wbitmap, kind, 45, 3, W_SUN, W_CLOUD, W_DROP, step, self._wx_drift)
         if pop is not None:
             x = hw.WIDTH - 1 - pixfont.text_width(pop)
             pixfont.draw_halo(self.wbitmap, pop, x, 16,
