@@ -9,8 +9,10 @@ CircuitPython auto-reloads when a file is written, so there is no reset step.
 It never touches settings.toml, secrets.py or lib/.
 Desktop-only tool: may use pathlib etc. Nothing in device/ may.
 """
+import glob
 import os
-import shutil
+import re
+import select
 import sys
 import time
 from pathlib import Path
@@ -36,13 +38,96 @@ def wait_for_drive(timeout=30):
         time.sleep(1)
 
 
+def _flush_to_disk(fd):
+    """fsync, and on macOS F_FULLFSYNC (plain fsync does not reach the device there)."""
+    os.fsync(fd)
+    try:
+        import fcntl
+        fcntl.fcntl(fd, fcntl.F_FULLFSYNC)
+    except (ImportError, AttributeError, OSError):
+        pass
+
+
 def put(src, name):
     dst = DRIVE / name
-    shutil.copyfile(src, dst)
-    fd = os.open(dst, os.O_RDONLY)
-    os.fsync(fd)
-    os.close(fd)
+    data = Path(src).read_bytes()
+    with open(dst, "wb") as f:
+        f.write(data)
+        f.flush()
+        _flush_to_disk(f.fileno())
     print("copied", src.relative_to(ROOT), "->", name)
+
+
+def expected_sizes():
+    """{file name: size} the board should report for the shipped app files."""
+    return {m: (DEVICE / m).stat().st_size for m in SHIPPED}
+
+
+def parse_manifest(text):
+    """The last 'manifest: a.py=12 b.py=34' line in `text` as {name: size}, or None."""
+    found = None
+    for line in text.splitlines():
+        m = re.search(r"manifest: (.*)$", line)
+        if m:
+            found = {k: int(v) for k, v in re.findall(r"([\w.]+)=(\d+)", m.group(1))}
+    return found
+
+
+def compare_manifest(expected, got):
+    """Problem lines (empty list = the board has exactly what the repo has)."""
+    problems = []
+    for name, size in sorted(expected.items()):
+        if name not in got:
+            problems.append("MISSING on board: %s" % name)
+        elif got[name] != size:
+            problems.append("STALE on board: %s (board %d bytes, repo %d)" % (name, got[name], size))
+    return problems
+
+
+def read_serial(seconds, port=None, until=None):
+    """Read-only: opens the port, never writes (no keys, no Ctrl-C). Stops early when
+    until(text) is true."""
+    import termios
+    port = port or (glob.glob("/dev/cu.usbmodem*") or [None])[0]
+    if not port:
+        return ""
+    fd = os.open(port, os.O_RDONLY | os.O_NOCTTY | os.O_NONBLOCK)
+    try:
+        attrs = termios.tcgetattr(fd)
+        attrs[3] &= ~(termios.ECHO | termios.ICANON)
+        termios.tcsetattr(fd, termios.TCSANOW, attrs)
+        text, end = "", time.time() + seconds
+        while time.time() < end and not (until and until(text)):
+            if select.select([fd], [], [], 0.2)[0]:
+                try:
+                    text += os.read(fd, 4096).decode(errors="replace")
+                except BlockingIOError:
+                    pass
+        return text
+    finally:
+        os.close(fd)
+
+
+def verify(timeout=40):
+    """After the code.py write the board reloads and prints its manifest. Compare it."""
+    print("verifying: waiting up to %d s for the board's manifest (read-only)..." % timeout)
+    want = expected_sizes()
+    # An early manifest can come from a reload in the middle of the deploy, so only a
+    # matching one ends the wait; otherwise keep listening and judge the last one.
+    text = read_serial(timeout, until=lambda t: re.search(r"manifest: .*\n", t) is not None
+                       and not compare_manifest(want, parse_manifest(t) or {}))
+    got = parse_manifest(text)
+    if got is None:
+        print("VERIFY FAILED: no manifest seen (no serial port, or the board did not reboot).")
+        return False
+    problems = compare_manifest(want, got)
+    crash = [l for l in text.splitlines() if l.startswith("CRASH:")]
+    problems += ["board reports " + l for l in crash]
+    for p in problems:
+        print("VERIFY FAILED:", p)
+    if not problems:
+        print("verified: %d files match the repo" % len(want))
+    return not problems
 
 
 def put_stops():
@@ -73,6 +158,8 @@ def main(argv):
         put_stops()   # data first: code.py's write triggers the reload
         for m in SHIPPED:
             put(DEVICE / m, m)
+        if not verify():
+            sys.exit(1)
         return
     sys.exit(__doc__)
 

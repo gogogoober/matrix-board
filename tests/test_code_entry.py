@@ -142,8 +142,9 @@ class CodeEntryTest(unittest.TestCase):
     def test_persistent_i2c_failure_is_a_crash_that_resets(self):
         self.accel.script = [OSError("i2c")] * 200
         self.assertEqual(self.run_code(), "Reset")
-        self.assertEqual(health.load(self.nvm)[0], 1)
-        self.assertIn(3, self.sleeps)                      # waited before resetting
+        self.assertEqual(health.load(self.nvm)[0], 0)      # OSError is not bad saved data
+        self.assertEqual(health.bugs(self.nvm), 1)
+        self.assertIn(config.BUG_HOLD_S[0], self.sleeps)   # held before resetting
 
     def test_missing_accelerometer_still_runs_the_sign(self):
         def boom():
@@ -165,18 +166,19 @@ class CodeEntryTest(unittest.TestCase):
             harness.FixtureNet.get_json = orig
         self.assertEqual(self.resets, 0)
 
-    def test_crash_in_main_resets_and_counts(self):
+    def test_data_crash_in_main_resets_and_counts(self):
         def boom():
             raise MemoryError("heap")
         hw.make_display = boom
         self.assertEqual(self.run_code(), "Reset")
         self.assertEqual(health.load(self.nvm)[0], 1)
+        self.assertIn(3, self.sleeps)
         self.assertIsNotNone(self.creds.load(self.nvm))       # one crash wipes nothing
         self.assertIsNotNone(self.picks.load(self.nvm))
 
     def test_repeated_crashes_clear_stops_then_everything(self):
         def boom():
-            raise RuntimeError("bad state")
+            raise ValueError("bad state")
         hw.make_display = boom
         for _ in range(config.CRASHES_CLEAR_STOPS):
             self.assertEqual(self.run_code(), "Reset")
@@ -186,6 +188,44 @@ class CodeEntryTest(unittest.TestCase):
             self.assertEqual(self.run_code(), "Reset")
         self.assertIsNone(self.creds.load(self.nvm))           # fresh state
         self.assertEqual(health.load(self.nvm)[0], 0)
+
+    def test_code_bugs_never_wipe_saved_state(self):
+        for exc in (AttributeError("with_names"), ImportError("x"), NameError("x"),
+                    SyntaxError("x"), TypeError("x"), OSError("x"), RuntimeError("x")):
+            def boom(exc=exc):
+                raise exc
+            hw.make_display = boom
+            for _ in range(config.CRASHES_CLEAR_ALL + 2):
+                self.assertEqual(self.run_code(), "Reset")
+            self.assertIsNotNone(self.picks.load(self.nvm), type(exc).__name__)
+            self.assertIsNotNone(self.creds.load(self.nvm), type(exc).__name__)
+            self.assertEqual(health.load(self.nvm)[0], 0)
+
+    def test_code_bug_hold_grows_then_caps(self):
+        def boom():
+            raise AttributeError("x")
+        hw.make_display = boom
+        for _ in range(5):
+            self.run_code()
+        holds = [s for s in self.sleeps if s in config.BUG_HOLD_S]
+        self.assertEqual(holds, [10, 30, 60, 60, 60])
+
+    def test_missing_with_names_is_not_fatal(self):
+        saved = self.picks.with_names
+        del self.picks.with_names                          # the 2026-10-09 incident
+        try:
+            self.assertEqual(self.run_code(), "Stop")
+        finally:
+            self.picks.with_names = saved
+        self.assertEqual(self.resets, 0)
+
+    def test_boot_prints_a_manifest_first(self):
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.run_code()
+        self.assertTrue(buf.getvalue().startswith("manifest:"), buf.getvalue()[:80])
 
     def test_power_cycles_alone_never_wipe_anything(self):
         for _ in range(20):

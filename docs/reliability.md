@@ -16,7 +16,9 @@ frozen panel. Written 2026-10-09 from a full read of `device/`.
 | 6 | **Blocking Wi-Fi connect**: 5 tries x ~10 s per fetch, three fetches per cycle -> minutes blocked while Wi-Fi is down. | up to ~3 min | 3 tries, then a 20 s cooldown during which fetches fail instantly; HTTP timeout 12 s. |
 | 7 | **Oversized or hostile response** read fully into RAM. | `r.json()` on anything | Content-Length above 20 KB is rejected before reading. |
 | 8 | **Setup portal leftovers** (the portal module, AP state, fragmentation) stayed in RAM after setup. | stayed | Leaving setup in any way restarts the sign (fresh state, Wi-Fi rejoins from saved credentials). |
-| 9 | **Bad persisted state that crashes the app** (e.g. stop record that validates but breaks something). | stuck in a loop | 3 consecutive crashes (each within 2 min of boot) clear the saved stops (fall back to `config.STOPS`); 6 also clear Wi-Fi credentials (device enters setup, a fresh state). Power cuts do **not** count: only software-detected crashes do. |
+| 9 | **Bad persisted state that crashes the app** (e.g. stop record that validates but breaks something). | stuck in a loop | Only crashes that look like bad saved data (`MemoryError`, `ValueError`, `KeyError`; `health.is_data_crash`) count: 3 consecutive ones clear the saved stops (fall back to `config.STOPS`); 6 also clear Wi-Fi credentials (setup mode). **Code bugs** (`AttributeError`, `ImportError`, `NameError`, `SyntaxError`, `TypeError`, `OSError`, `RuntimeError`...) are printed, counted separately (`bugs`) and reset, but never wipe anything. Power cuts do **not** count. |
+| 9b | **Crash loop right after a deploy** (2026-10-09: a half-copied deploy, `picks.with_names` missing, crash handler wiped stops and Wi-Fi; hard resets during host writes then corrupted CIRCUITPY). | reset every 3 s | A code-bug crash holds 10 s, then 30 s, then 60 s (`BUG_HOLD_S`) before the reset, so the host can finish writing; the deploy's last write (`code.py`) reloads the board anyway. Data crashes still wait 3 s. |
+| 9c | **Optional boot features** (station names) crashing the sign. | crash | `picks.with_names` is wrapped in `code.py`: on any failure the sign runs with no station names. |
 | 10 | **Power cut during an NVM write** (credentials, stops, counters). | checksum -> reads as "none" | unchanged (verified by corruption tests); the code never writes the CIRCUITPY filesystem, so a power cut cannot corrupt it. |
 | 11 | **Weather high/low** outside the sane range, or NaN. | only `temp` checked | hi/lo range-checked like temp; bad payload keeps the old data. |
 | 12 | **Boot with the ESP32 not ready** or the accelerometer missing. | crash at boot | any boot exception goes through the crash handler (retry after reset). |
@@ -45,13 +47,13 @@ frozen panel. Written 2026-10-09 from a full read of `device/`.
 `RETRY_S` 15 and `RETRY_MAX_S` 300; `HTTP_TIMEOUT_S` 12; `MAX_RESPONSE_B` 20000;
 `RADIO_RESET_AFTER_S` 900; `REBOOT_AFTER_S` 1500 (x2 per failed reboot, max
 `REBOOT_AFTER_MAX_S` 3600); `RESTART_EVERY_S` 21600; `HEALTHY_AFTER_S` 120;
-`CRASHES_CLEAR_STOPS` 3; `CRASHES_CLEAR_ALL` 6; `WIFI_CONNECT_TRIES` 3;
+`CRASHES_CLEAR_STOPS` 3; `CRASHES_CLEAR_ALL` 6 (data crashes only); `BUG_HOLD_S` (10, 30, 60); `WIFI_CONNECT_TRIES` 3;
 `WIFI_COOLDOWN_S` 20.
 
 ## NVM map
 
-`0..~101` Wi-Fi (`creds.py`), `128..~530` stops (`picks.py`), `1024..1029`
-counters (`health.py`: crash count, no-data reboot count).
+`0..~101` Wi-Fi (`creds.py`), `128..~530` stops (`picks.py`), `1024..1030`
+counters (`health.py`, record `HB2`: data-crash count, no-data reboot count, code-bug count).
 
 ## Files
 
@@ -59,3 +61,15 @@ counters (`health.py`: crash count, no-data reboot count).
 scheduled restart), `device/net.py` (cooldown, radio reset, size guard),
 `device/code.py` (crash handler, boot guard), `tests/test_health.py`,
 `tests/test_reliability.py`.
+
+## Deploy safety (2026-10-09)
+
+- `tools/deploy.py` writes each file with flush + fsync (+ `F_FULLFSYNC` on macOS), `code.py` last.
+- `code.py` prints `manifest: name.py=size ...` (from `os.stat`, the board's own view) as its
+  first line at every boot. After copying, `deploy.py app` listens read-only on the serial
+  port (never sends anything) for up to 40 s, compares with the repo and reports each
+  STALE or MISSING file or a `CRASH:` line; it exits non-zero on any problem.
+- `tests/test_shipped_api.py` fails if shipped code uses a `module.name` that the
+  shipped module does not define (the exact bug of the incident).
+- Tests: `tests/test_health.py` (classification, no-wipe, hold), `tests/test_code_entry.py`
+  (real `code.py` against fakes), `tests/test_deploy.py`.

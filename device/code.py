@@ -2,9 +2,26 @@
 answered with a hard reset, because a dead program would leave the panel frozen
 on its last frame. See docs/reliability.md."""
 import gc
+import os
 import time
 
 import microcontroller
+
+
+def manifest():
+    """One line with the size of every .py file as the board itself sees it, so tools/deploy.py
+    can tell stale or missing files from what macOS shows on the mounted drive."""
+    try:
+        parts = []
+        for name in sorted(os.listdir("/")):
+            if name.endswith(".py"):
+                parts.append("%s=%d" % (name, os.stat("/" + name)[6]))
+        print("manifest: " + " ".join(parts))
+    except Exception as e:
+        print("manifest failed:", type(e).__name__)
+
+
+manifest()   # first, before any import that could fail
 
 import config
 import creds
@@ -33,7 +50,12 @@ def main():
 
     display = hw.make_display()
     stops = picks.load() or config.STOPS   # chosen on the setup page, else config.py
-    state = model.State(picks.with_names(stops))
+    try:
+        named = picks.with_names(stops)
+    except Exception as e:           # names are cosmetic: the sign works without them
+        print("no station names:", type(e).__name__, e)
+        named = [dict(s) for s in stops]
+    state = model.State(named)
     screen = ui.Ui(state)
     hw.show(display, screen.group)
     wifi = net.Net()
@@ -100,9 +122,14 @@ except Exception as e:   # not KeyboardInterrupt or a reload: those must still w
         sys.print_exception(e)
     except Exception:
         pass
+    hold = 3
     try:
-        print("cleared:", health.handle_crash(picks, creds, config.CRASHES_CLEAR_STOPS, config.CRASHES_CLEAR_ALL))
+        print("cleared:", health.handle_crash(picks, creds, config.CRASHES_CLEAR_STOPS,
+                                              config.CRASHES_CLEAR_ALL, None, e))
+        if not health.is_data_crash(e):   # a code bug: wait longer each time so a deploy can finish
+            hold = health.hold_seconds(health.bugs(), config.BUG_HOLD_S)
     except Exception:
         pass
-    time.sleep(3)
+    print("holding", hold, "s before reset")
+    time.sleep(hold)
     microcontroller.reset()

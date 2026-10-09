@@ -64,3 +64,4 @@ RESTART_EVERY_S = 6 * 3600  # planned restart: float clock precision, heap fragm
 HEALTHY_AFTER_S = 120       # running this long without a crash clears the crash count
 CRASHES_CLEAR_STOPS = 3     # consecutive crashes: forget the saved stops
 CRASHES_CLEAR_ALL = 6       # ...and the saved Wi-Fi too (fresh state, setup mode)
+BUG_HOLD_S = (10, 30, 60)    # code-bug crashes (never wiped): seconds to hold before the reset

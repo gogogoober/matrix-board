@@ -78,7 +78,7 @@ class CountersTest(unittest.TestCase):
         n = blank()
         health.note_crash(n)
         health.note_quiet_reboot(n)
-        for i in range(health.OFFSET, health.OFFSET + 6):
+        for i in range(health.OFFSET, health.OFFSET + 7):
             bad = bytearray(n)
             bad[i] ^= 1
             self.assertEqual(health.load(bad), (0, 0), i)
@@ -127,6 +127,42 @@ class CrashEscalationTest(unittest.TestCase):
         health.note_healthy(n)
         self.assertEqual(health.handle_crash(p, c, 3, 6, n), "none")
         self.assertEqual((p.cleared, c.cleared), (0, 0))
+
+    def test_classification(self):
+        for e in (MemoryError(), ValueError(), KeyError("k")):
+            self.assertTrue(health.is_data_crash(e), e)
+        for e in (AttributeError(), ImportError(), NameError(), SyntaxError(), TypeError(),
+                  OSError(), RuntimeError(), IndexError(), ZeroDivisionError()):
+            self.assertFalse(health.is_data_crash(e), e)
+
+    def test_code_bugs_never_escalate_or_clear(self):
+        n = blank()
+        p, c = self.Fake(), self.Fake()
+        for _ in range(50):
+            self.assertEqual(health.handle_crash(p, c, 3, 6, n, AttributeError("with_names")), "none")
+        self.assertEqual((p.cleared, c.cleared), (0, 0))
+        self.assertEqual(health.load(n)[0], 0)
+        self.assertEqual(health.bugs(n), 50)
+
+    def test_bugs_do_not_reset_or_advance_the_data_count(self):
+        n = blank()
+        p, c = self.Fake(), self.Fake()
+        health.handle_crash(p, c, 3, 6, n, ValueError())
+        health.handle_crash(p, c, 3, 6, n, TypeError())
+        self.assertEqual(health.load(n)[0], 1)
+        self.assertEqual(health.handle_crash(p, c, 3, 6, n, KeyError("x")), "none")
+        self.assertEqual(health.handle_crash(p, c, 3, 6, n, KeyError("x")), "stops")
+
+    def test_healthy_run_forgets_bugs_too(self):
+        n = blank()
+        health.note_bug(n)
+        health.note_healthy(n)
+        self.assertEqual(health.bugs(n), 0)
+
+    def test_hold_grows_and_caps(self):
+        steps = (10, 30, 60)
+        self.assertEqual([health.hold_seconds(b, steps) for b in (0, 1, 2, 3, 4, 99)],
+                         [10, 10, 30, 60, 60, 60])
 
     def test_clearing_failures_do_not_raise(self):
         class Boom:
