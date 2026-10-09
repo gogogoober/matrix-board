@@ -25,8 +25,8 @@ WEATHER_URL = (
 MIN_MINUTES_SHOWN = 4
 TRAINS_STORED = 6         # fetched per stop, so there is always one to skip to
 
-ARRIVALS_REFRESH_S = 45   # be polite to a free service
-WEATHER_REFRESH_S = 900
+ARRIVALS_REFRESH_S = 60   # one fetch a minute, in step with the local countdown (model.Slot.shown); polite to a free service
+WEATHER_REFRESH_S = 1800  # one small call; the sign redraws temperature, range and icon from it
 RETRY_S = 15              # after a failed fetch
 STALE_AFTER_S = 180       # dim the numbers when data is older than this
 TAP_ONSET_G = 0.5         # a bump counts as a tap above this change in g (your taps: 0.8 to 3 g)

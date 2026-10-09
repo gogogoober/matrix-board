@@ -12,11 +12,13 @@ for p in (os.path.join(ROOT, "sim", "fakes"), os.path.join(ROOT, "device"), ROOT
 import app  # noqa: E402
 import config  # noqa: E402
 import model  # noqa: E402
+import picks  # noqa: E402
 import setupui  # noqa: E402
 import ui  # noqa: E402
 from sim import render  # noqa: E402
 
 FIX = os.path.join(ROOT, "tests", "fixtures")
+STOPS_DIR = os.path.join(ROOT, "device", "stops")
 
 
 def load(name):
@@ -54,7 +56,7 @@ class FixtureNet:
 
 def make(net=None):
     net = net or FixtureNet()
-    state = model.State(config.STOPS)
+    state = model.State(picks.with_names(config.STOPS, STOPS_DIR))
     screen = ui.Ui(state)
     return net, state, screen, app.App(state, screen, net.get_json)
 
@@ -134,7 +136,7 @@ def make_setup(net=None, wifi=None):
     net = net or FixtureNet()
     wifi = wifi or FakeWifi()
     display = FakeDisplay()
-    state = model.State(config.STOPS)
+    state = model.State(picks.with_names(config.STOPS, STOPS_DIR))
     screen = ui.Ui(state)
     setup = setupui.SetupScreen(display, screen.group)
     a = app.App(state, screen, net.get_json, wifi, setup)

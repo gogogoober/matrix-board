@@ -33,7 +33,7 @@ def main():
 
     display = hw.make_display()
     stops = picks.load() or config.STOPS   # chosen on the setup page, else config.py
-    state = model.State(stops)
+    state = model.State(picks.with_names(stops))
     screen = ui.Ui(state)
     hw.show(display, screen.group)
     wifi = net.Net()

@@ -2,8 +2,9 @@
 
 
 class Slot:
-    def __init__(self, route, direction):
+    def __init__(self, route, direction, name=""):
         self.route = route
+        self.name = name
         self.direction = direction
         self.minutes = None   # list of ints at fetch time, or None = never fetched
         self.fetched = None   # monotonic seconds of the last good fetch
@@ -26,7 +27,7 @@ class Slot:
 
 class State:
     def __init__(self, stops):
-        self.slots = [Slot(s["route"], s["direction"]) for s in stops]
+        self.slots = [Slot(s["route"], s["direction"], s.get("name", "")) for s in stops]
         self.weather = None
         self.weather_fetched = None
 

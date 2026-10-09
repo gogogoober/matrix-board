@@ -2,12 +2,15 @@
 
 Layout (64x64): three rows, heights 21/21/22, dotted dividers.
   rows 0 and 1: line bullet (circle, route letter cut out in black, bold)
+                + the station name in white (3x5 font, centred over the times)
                 + the next two arrivals in two right-aligned columns, drawn
                 as digits 10 tall (3x5 font at double size, 6 wide; the second time only 4 wide
                 with 1 px sides so it draws less attention) into one small
                 bitmap per row, so a slide is just moving a TileGrid
-  row 2:        weather, static: high (orange) over low (blue) in exactly the
-                bullets' columns, icon on the right, rain chance in the
+  row 2:        weather, static: the current temperature big and white in exactly the
+                bullets' columns, icon on the right, and under the temperature a
+                range bar (low in blue, high in orange, numbers at its ends) with a
+                white tick where the temperature is now; rain chance in the
                 bottom-right corner only when it matters
 Built once; render() only changes label text/colour. animate(now) (called by the main
 loop every config.ANIM_FRAME_S) slides the times and plays the weather icon animation;
@@ -32,7 +35,8 @@ MAX_SHOWN = 99
 TIMES_X = 21    # left edge of the times bitmaps (right of the bullets)
 TIMES_W = 43    # 21..63
 TIME_COLS = ((2, 2, 2), (1, 2, 1))   # glyph column widths: the second time is thinner and narrower
-TIMES_DY = 6    # row top to the digits' top (10 px tall, centred on the bullet)
+TIMES_DY = 7    # row top to the digits' top (10 px tall, under the station name)
+NAME_DY = 1     # row top to the station name's top (5 px tall)
 MASK_W = 21     # x < MASK_W belongs to the bullet; sliding times disappear behind it
 SLIDE = 43      # px a row's times travel: far enough to leave the screen on both sides
 IDLE, OUT, IN = 0, 1, 2   # slide phases of a row
@@ -73,7 +77,9 @@ DROP = 0x3090FF
 
 # palette indices of the weather bitmap
 W_BLACK, W_WHITE, W_HI, W_LO, W_SUN, W_CLOUD, W_DROP, W_DIM = range(8)
-LOW_ROWS = (2, 2, 1, 2, 2)   # 9 px tall, same width as the high
+BAR_Y = 15      # weather bitmap row of the range bar (2 px tall); the numbers and tick are around it
+NUM_Y = 13      # top of the small low/high numbers (5 tall)
+HI_RIGHT = 38   # right edge of the high number: the icon's columns (ICON_X0) stay clear
 W_Y = 42   # screen row where the weather bitmap starts
 W_H = 22
 
@@ -89,6 +95,27 @@ def _draw_circle(bitmap, cx, cy, r, index):
             dy = y - cy
             if dx * dx + dy * dy <= r * r + r // 2:
                 bitmap[x, y] = index
+
+
+def display_name(name, max_w=TIMES_W):
+    """Station name for the sign: upper case, no line list in brackets, and short enough
+    for max_w px in the 3x5 font. Too long: the part before a '-' or '/', then whole words
+    from the end are dropped, then letters ("LEXINGTON AV/63 ST" -> "LEXINGTON")."""
+    s = name.upper()
+    cut = s.find("(")
+    if cut >= 0:
+        s = s[:cut]
+    s = "".join(ch if ch in pixfont.GLYPHS else " " for ch in s)
+    s = " ".join(s.split())
+    if pixfont.text_width(s) <= max_w:
+        return s
+    for sep in ("-", "/"):
+        s = s.split(sep)[0].strip()
+    while " " in s and pixfont.text_width(s) > max_w:
+        s = s[:s.rindex(" ")]
+    while len(s) > 1 and pixfont.text_width(s) > max_w:
+        s = s[:-1]
+    return s
 
 
 def column_text(minutes, i):
@@ -139,6 +166,14 @@ class Ui:
         mpal = displayio.Palette(2)
         mpal[0] = 0x000000
         self.group.append(displayio.TileGrid(mask, pixel_shader=mpal))
+        npal = displayio.Palette(2)   # station names: white on transparent black, never move
+        npal[0] = 0x000000
+        npal[1] = _sc(WHITE)
+        for i, slot in enumerate(state.slots):
+            nm = displayio.Bitmap(TIMES_W, 5, 2)
+            name = display_name(slot.name)
+            pixfont.draw(nm, name, (TIMES_W - pixfont.text_width(name)) // 2, 0, 1)
+            self.group.append(displayio.TileGrid(nm, pixel_shader=npal, x=TIMES_X, y=ROW_Y[i] + NAME_DY))
         self.bitmap = displayio.Bitmap(hw.WIDTH, hw.HEIGHT, 8)
         self.palette = displayio.Palette(8)
         self.palette[0] = 0x000000
@@ -324,7 +359,7 @@ class Ui:
         else:
             kind = feed.weather_kind(wx["code"], wx["pop"], config.RAIN_ICON_POP)
             view = (wx["hi"], wx["lo"], kind,
-                    feed.pop_label(kind, wx["pop"], config.PARTLY_POP_MIN))
+                    feed.pop_label(kind, wx["pop"], config.PARTLY_POP_MIN), wx["temp"])
         if self._weather_drawn and view == self.weather_view:
             return   # static: only redraw when something changed
         self.weather_view = view
@@ -335,19 +370,38 @@ class Ui:
         b.fill(W_BLACK)
         if view is None:
             pixfont.draw_big_centered(b, "--", BULLET_X, 1, W_DIM)
-            pixfont.draw_big_centered(b, "--", BULLET_X, 12, W_DIM)
             return
-        hi, lo, kind, pop = view
+        hi, lo, kind, pop, temp = view
         # centred on the bullet column: two digits span exactly the circle's width
-        pixfont.draw_big_centered(b, "%d" % hi, BULLET_X, 1, W_HI)
-        # the low is squished to 9 rows (middle bar 1 px) so it clears the bottom edge
-        pixfont.draw_big_centered(b, "%d" % lo, BULLET_X, 12, W_LO, rows=LOW_ROWS)
+        pixfont.draw_big_centered(b, "%d" % temp, BULLET_X, 1, W_WHITE)
+        self._draw_range(hi, lo, temp)
         self._draw_icon(None)
+
+    def _draw_range(self, hi, lo, temp):
+        """Low number, bar (blue half, orange half), high number; a white tick on the bar
+        where the temperature is now (clamped to the day's range)."""
+        b = self.wbitmap
+        lo_s = "%d" % lo
+        hi_s = "%d" % hi
+        pixfont.draw_text(b, lo_s, 3, NUM_Y, W_LO)
+        hx = HI_RIGHT + 1 - pixfont.text_width(hi_s)
+        pixfont.draw_text(b, hi_s, hx, NUM_Y, W_HI)
+        x0 = 3 + pixfont.text_width(lo_s) + 3
+        x1 = hx - 4
+        mid = (x0 + x1) // 2
+        for x in range(x0, x1 + 1):
+            for y in (BAR_Y, BAR_Y + 1):
+                b[x, y] = W_LO if x <= mid else W_HI
+        span = hi - lo
+        f = 0.5 if span <= 0 else (min(max(temp, lo), hi) - lo) / span
+        tx = x0 + int(round(f * (x1 - x0)))
+        for y in range(BAR_Y - 2, BAR_Y + 4):
+            b[tx, y] = W_WHITE
 
     def _draw_icon(self, step):
         """Icon and rain-chance label, resting (step None) or one animation frame."""
-        hi, lo, kind, pop = self.weather_view
-        icons.draw(self.wbitmap, kind, 45, 3, W_SUN, W_CLOUD, W_DROP, step, self._wx_drift)
+        kind, pop = self.weather_view[2], self.weather_view[3]
+        icons.draw(self.wbitmap, kind, 45, 1, W_SUN, W_CLOUD, W_DROP, step, self._wx_drift)
         if pop is not None:
             x = hw.WIDTH - 1 - pixfont.text_width(pop)
             pixfont.draw_halo(self.wbitmap, pop, x, 16,

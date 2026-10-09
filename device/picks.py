@@ -84,6 +84,25 @@ def line_of(stop):
     return stop.get("line") or stop["route"].lower()
 
 
+def with_names(stops, base=BASE):
+    """Copies of the stop dicts with "name" added: the station's name from its line
+    file, or "" when it cannot be found (the sign then just shows no name). The name is
+    not kept in NVM; this is read once at boot."""
+    out = []
+    for stop in stops:
+        d = dict(stop)
+        d["name"] = ""
+        try:
+            for slug, name in stations(line_of(stop), base):
+                if slug == stop["slug"]:
+                    d["name"] = name
+                    break
+        except Exception:
+            pass
+        out.append(d)
+    return out
+
+
 def make_stop(line, station, direction, base=BASE):
     """A validated stop dict, or None if line, station or direction is not real."""
     ln = line_info(line, base)

@@ -8,6 +8,7 @@ from sim import harness, render  # noqa: E402
 
 import config  # noqa: E402
 import hw  # noqa: E402
+import picks  # noqa: E402
 import ui  # noqa: E402
 
 
@@ -57,8 +58,27 @@ class AppSimTest(unittest.TestCase):
         a.step(400.0)
         fresh = render.render(screen.group)
         # stale numbers are dim, never the bright yellow
-        brightest = max(p[0] for row in fresh[2:19] for p in row[22:])
+        brightest = max(p[0] for row in fresh[7:19] for p in row[22:])
         self.assertLessEqual(brightest, (hw.scale(ui.TIME_COLORS_STALE[0]) >> 16) & 255)
+
+    def test_local_countdown_drops_one_per_minute_and_never_rises(self):
+        """Between fetches the sign counts down on its own clock: one minute off every 60 s,
+        measured from when the fetch started, and a new fetch simply overwrites it."""
+        _, state, screen, a = harness.make()
+        a.step(0.0)
+        slot = state.slots[0]
+        slot.set([30, 40], 0.0)
+        base = 30
+        self.assertEqual(config.ARRIVALS_REFRESH_S, 60)
+        seen = [slot.shown(t, 0)[0] for t in range(0, 300)]
+        self.assertEqual(seen[0], base)
+        self.assertEqual(seen[59], base)                       # still the same just before a minute
+        self.assertEqual(seen[60], base - 1)
+        self.assertEqual(seen[179], base - 2)
+        self.assertEqual(seen[180], base - 3)
+        self.assertEqual(seen, sorted(seen, reverse=True))     # never goes up on its own
+        slot.set([base + 7], 1000.0)                           # a fetch overwrites whatever was local
+        self.assertEqual(slot.shown(1000.0, 0), [base + 7])
 
     def test_never_fetched_shows_dashes_not_garbage(self):
         net, state, screen, a = harness.make()
@@ -73,7 +93,7 @@ class AppSimTest(unittest.TestCase):
         screen.animate(5.0)
         c = render.render(screen.group)
 
-        def brightest(x0, x1, y0=2, y1=19):
+        def brightest(x0, x1, y0=7, y1=19):
             return max(c[y][x][0] for y in range(y0, y1) for x in range(x0, x1))
         first, second = brightest(24, 44), brightest(44, 64)
         self.assertEqual(first, (hw.scale(ui.TIME_COLORS[0]) >> 16) & 255)
@@ -85,7 +105,7 @@ class AppSimTest(unittest.TestCase):
         q2 = render.quantize((second,) * 3, hw.BIT_DEPTH)[0]
         self.assertGreater(q2, 0)                                   # still visible
         self.assertGreaterEqual(q1 / q2, 2.5, (q1, q2))             # clearly dimmer
-        for y in range(2, 19):                  # yellow: no blue on any lit pixel
+        for y in range(7, 19):                  # yellow: no blue on any lit pixel (the name above is white)
             for x in range(22, 64):
                 r, g, b = c[y][x]
                 self.assertEqual(b, 0)
@@ -210,29 +230,82 @@ class AppSimTest(unittest.TestCase):
             screen, _ = self._weather(code, pop)
             self.assertEqual(screen.weather_view[3], want, (code, pop))
 
-    def test_temperatures_span_exactly_the_circle_columns(self):
-        """Two-digit hi and lo start and end on the same columns as the circles."""
-        for hi, lo in ((71, 52), (99, 10), (88, 11), (35, 20), (10, 19)):
-            screen, c = self._weather(0, 0, hi=hi, lo=lo)
+    def test_current_temperature_spans_exactly_the_circle_columns(self):
+        """The big white current temperature starts and ends on the same columns as the circles."""
+        for temp in (71, 99, 10, 35):
+            screen, c = self._weather(0, 0, hi=99, lo=10, temp=temp)
 
             def cols(y0, y1, x1=30):
                 xs = [x for y in range(y0, y1) for x in range(0, x1) if c[y][x] != (0, 0, 0)]
                 return min(xs), max(xs)
-            circle = cols(2, 19)                    # bullet circle, not the divider
-            self.assertEqual(circle, (3, 19))
-            self.assertEqual(cols(43, 53), circle, hi)   # high row
-            self.assertEqual(cols(54, 64), circle, lo)   # low row
+            self.assertEqual(cols(2, 19), (3, 19))      # bullet circle, not the divider
+            self.assertEqual(cols(43, 53), (3, 19), temp)
+            rows = [y for y in range(42, 54) if any(c[y][x] != (0, 0, 0) for x in range(0, 21))]
+            self.assertEqual((rows[0], rows[-1]), (43, 52), temp)             # 10 tall
 
-    def test_high_is_10_rows_and_low_is_9_and_clears_the_bottom_edge(self):
-        for hi, lo in ((71, 52), (99, 10), (88, 88), (35, 20)):
-            screen, c = self._weather(0, 0, hi=hi, lo=lo)
+    def test_range_bar_has_low_blue_high_orange_and_a_tick_for_now(self):
+        low, high, white = (tuple((hw.scale(col) >> s) & 255 for s in (16, 8, 0))
+                            for col in (ui.ICE, ui.ORANGE, ui.WHITE))
+        for temp in (54, 60, 65, 76):
+            screen, c = self._weather(0, 0, hi=76, lo=54, temp=temp)
+            bar_y = 42 + ui.BAR_Y
+            xs = [x for x in range(0, 40) if c[bar_y][x] != (0, 0, 0)]
+            blue = [x for x in xs if c[bar_y][x] == low]
+            orange = [x for x in xs if c[bar_y][x] == high]
+            self.assertTrue(blue and orange, temp)
+            self.assertLess(max(blue), min(orange))                      # blue half, then orange half
+            ticks = [x for x in range(0, 40) if c[bar_y + 2][x] == white]
+            self.assertEqual(len(ticks), 1, temp)
+            lo_x, hi_x = min(x for x in xs if c[bar_y][x] != white), max(xs)
+            self.assertLessEqual(lo_x, ticks[0])
+            self.assertGreaterEqual(hi_x, ticks[0])
+        _, lo_c = self._weather(0, 0, hi=76, lo=54, temp=54)
+        _, hi_c = self._weather(0, 0, hi=76, lo=54, temp=76)
+        _, mid_c = self._weather(0, 0, hi=76, lo=54, temp=65)
+        tick = lambda c: [x for x in range(0, 40) if c[42 + ui.BAR_Y + 2][x] == white][0]
+        self.assertLess(tick(lo_c), tick(mid_c))
+        self.assertLess(tick(mid_c), tick(hi_c))
 
-            def rows(y0, y1):
-                return [y for y in range(y0, y1) if any(c[y][x] != (0, 0, 0) for x in range(0, 21))]
-            hi_rows, lo_rows = rows(42, 54), rows(54, 64)
-            self.assertEqual((hi_rows[0], hi_rows[-1]), (43, 52), hi)    # high: unchanged, 10 tall
-            self.assertEqual((lo_rows[0], lo_rows[-1]), (54, 62), lo)    # low: 9 tall
+    def test_range_numbers_and_the_icon_never_overlap_and_stay_on_the_panel(self):
+        for hi, lo, temp in ((71, 52, 60), (99, 10, 99), (100, -5, -5), (-12, -20, -15), (5, 0, 2), (60, 60, 60)):
+            screen, c = self._weather(0, 0, hi=hi, lo=lo, temp=temp)
+            mine = [tuple((hw.scale(col) >> s) & 255 for s in (16, 8, 0))
+                    for col in (ui.ICE, ui.ORANGE, ui.WHITE)]   # the sun icon (code 0) is yellow
+            for y in range(42 + ui.NUM_Y - 2, 64):
+                for x in range(ui.ICON_X0, 64):
+                    self.assertNotIn(c[y][x], mine, (hi, lo, temp, x, y))   # numbers, bar, tick stay left of the icon
             self.assertTrue(all(c[63][x] == (0, 0, 0) for x in range(64)))   # bottom row empty
+
+    def test_station_names_are_white_and_centred_over_the_times(self):
+        net, state, screen, a = harness.make()
+        a.step(0.0)
+        screen.animate(5.0)
+        c = render.render(screen.group)
+        white = tuple((hw.scale(ui.WHITE) >> s) & 255 for s in (16, 8, 0))
+        for i, name in enumerate(("96 ST", "103 ST")):
+            self.assertEqual(state.slots[i].name.split(" (")[0].upper(), name)
+            top = ui.ROW_Y[i] + ui.NAME_DY
+            xs = [x for y in range(top, top + 5) for x in range(21, 64) if c[y][x] == white]
+            self.assertTrue(xs, name)
+            self.assertLess(abs((min(xs) + max(xs)) / 2 - 42), 2.5, name)    # centred on x=21..63
+            # nothing but the name between the row top and the digits
+            self.assertFalse(any(c[y][x] != (0, 0, 0) for y in range(ui.ROW_Y[i], top) for x in range(21, 64)))
+
+    def test_display_name_shortens_long_station_names(self):
+        import pixfont
+        self.assertEqual(ui.display_name("96 St (4/6/6X/N/Q/R)"), "96 ST")
+        self.assertEqual(ui.display_name("Lexington Av/63 St"), "LEXINGTON")
+        self.assertEqual(ui.display_name("Times Sq-42 St"), "TIMES SQ")
+        self.assertEqual(ui.display_name("St. George"), "ST. GEORGE")
+        self.assertEqual(ui.display_name(""), "")
+        for line in os.listdir(os.path.join(harness.ROOT, "device", "stops")):
+            if line == "lines.txt":
+                continue
+            for _, name in picks.stations(line[:-4], harness.STOPS_DIR):
+                short = ui.display_name(name)
+                self.assertTrue(short, name)
+                self.assertLessEqual(pixfont.text_width(short), ui.TIMES_W, name)
+                self.assertTrue(all(ch in pixfont.GLYPHS for ch in short), name)
 
     def test_one_and_three_digit_and_negative_temperatures_stay_inside(self):
         for hi, lo in ((5, 0), (100, -5), (-12, -20)):
