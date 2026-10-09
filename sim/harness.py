@@ -40,11 +40,7 @@ class FixtureNet:
         self.fail = False
         self.calls = []
 
-    def get_json(self, url, parse=None):
-        data = self._get(url)
-        return data if parse is None else parse(data)
-
-    def _get(self, url):
+    def get_json(self, url):
         self.calls.append(url)
         if self.fail:
             raise OSError("simulated network failure")

@@ -45,9 +45,9 @@ class FakeNet:
     def __init__(self):
         self.creds = True
 
-    def get_json(self, url, parse=None):
+    def get_json(self, url):
         n = harness.FixtureNet()
-        return n.get_json(url, parse)
+        return n.get_json(url)
 
     def has_credentials(self):
         return self.creds
@@ -153,14 +153,14 @@ class CodeEntryTest(unittest.TestCase):
         hw.make_accelerometer = boom
         orig = harness.FixtureNet.get_json
         calls = []
-        harness.FixtureNet.get_json = lambda s, u, p=None: (calls.append(u), orig(s, u, p))[1]
+        harness.FixtureNet.get_json = lambda s, u: (calls.append(u), orig(s, u))[1]
         try:
             # no accelerometer means nothing ends the loop: stop it from the fetch
-            def stop_after(url, parse=None, _orig=orig, _self=harness.FixtureNet()):
+            def stop_after(url, _orig=orig, _self=harness.FixtureNet()):
                 calls.append(url)
                 if len(calls) > 4:
                     raise Stop()
-                return _orig(_self, url, parse)
+                return _orig(_self, url)
             self.net.get_json = stop_after
             self.assertEqual(self.run_code(), "Stop")
         finally:
