@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+out/
+# Wi-Fi credentials never go in the repo or the deploy list
+secrets.py
+settings.toml
+backup/original-circuitpy/settings.toml
+firmware/
+.venv/
