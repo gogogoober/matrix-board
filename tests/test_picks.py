@@ -8,6 +8,7 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "device"))
 sys.path.insert(0, ROOT)
 
+import config  # noqa: E402
 import picks  # noqa: E402
 import portal  # noqa: E402
 from tests.test_portal import FakeEsp, post  # noqa: E402
@@ -279,6 +280,23 @@ class AppAppliesPicksTest(unittest.TestCase):
         self.a.step(11.0)
         self.a.step(20.0)
         self.assertEqual(self.restarts, 1)
+
+    def test_double_tap_in_then_double_tap_out_is_one_reset(self):
+        self.a.double_tap(10.0)                     # into Wi-Fi pairing mode
+        self.assertEqual(self.a.mode, self.app_mod.SETUP)
+        self.assertEqual(self.restarts, 0)          # entering does not reset
+        self.a.step(11.0)
+        self.a.double_tap(20.0)                     # back out: reset, nothing submitted
+        self.assertEqual(self.restarts, 1)
+
+    def test_timeout_and_failed_setup_also_end_in_a_reset(self):
+        self.a.double_tap(10.0)
+        self.a.step(10.0 + config.PORTAL_TIMEOUT_S + 1)
+        self.assertEqual(self.restarts, 1)
+        self.wifi.fail_scan = True
+        self.a.double_tap(2000.0)                   # setup fails to start: notice, then reset
+        self.a.step(2000.0 + self.app_mod.NOTICE_S + 0.1)
+        self.assertEqual(self.restarts, 2)
 
     def test_no_setup_no_restart(self):
         for t in range(1, 200, 5):

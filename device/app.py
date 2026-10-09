@@ -26,7 +26,6 @@ class App:
         self.setup_ui = setup_ui
         self.stops = stops if stops is not None else config.STOPS
         self.restart = restart    # called when setup ends after the stops changed (the sign's rows are built once)
-        self.restart_pending = False
         # Reliability (docs/reliability.md). reboot(reason) hard-resets the board:
         # "nodata" (no good fetch for a long time) or "scheduled". on_good() runs
         # after a good fetch so persisted counters can be cleared.
@@ -140,7 +139,6 @@ class App:
             self.setup_ui.hide()
 
     def enter_setup(self, now):
-        self.restart_pending = True   # whatever happens in setup, leave it with a fresh start
         self.hint_shown = False
         self.setup_ui.scanning()
         try:
@@ -161,7 +159,7 @@ class App:
         if self.health is not None:
             self.health.reset(now)
         self.ui.render(now)
-        if self.restart_pending and self.restart is not None:
+        if self.restart is not None:   # every way out of setup (double tap, timeout, saved) is a reset
             self.restart()
 
     def _step_setup(self, now):
@@ -180,7 +178,6 @@ class App:
             try:
                 self.wifi.save_picks(stops)
                 self.stops = stops
-                self.restart_pending = True
             except Exception as e:
                 self._fail(now, e)
                 return
