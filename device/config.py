@@ -38,6 +38,8 @@ LABEL_POP_MIN = 15        # the blue rain-chance % shows from this up, for every
 # Animations (docs/animations.md). When arrivals change, a row's two times slide off to the
 # left and the new ones slide in from the right; the weather icon never animates.
 # Everything else on the panel stays still.
+STEP_S = 1.0              # the app (fetch timers, liveness, redraw check) runs once a second while the sign runs
+STEP_SETUP_S = 0.1        # ...and 10x a second in setup / notice mode, so the Wi-Fi portal stays responsive
 ANIM_FRAME_S = 0.04       # main loop advances animations this often (25 Hz)
 SLIDE_OUT_S = 0.38        # old times leave to the left
 SLIDE_IN_S = 0.52         # new times arrive from the right

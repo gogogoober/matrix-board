@@ -129,6 +129,20 @@ class CodeEntryTest(unittest.TestCase):
             return type(e).__name__
         return "returned"
 
+    def test_the_app_steps_once_a_second_in_run_mode(self):
+        import app
+        times = []
+        orig = app.App.step
+        app.App.step = lambda self, now: (times.append(now), orig(self, now))[1]
+        try:
+            self.accel = Accel([(0.0, 0.0, 9.8)] * 120)
+            self.assertEqual(self.run_code(), "Stop")
+        finally:
+            app.App.step = orig
+        self.assertGreater(len(times), 2)
+        gaps = [b - a for a, b in zip(times, times[1:])]
+        self.assertGreaterEqual(min(gaps), config.STEP_S - 0.01)
+
     def test_normal_run_loops_until_stopped(self):
         self.assertEqual(self.run_code(), "Stop")
         self.assertEqual(self.resets, 0)
