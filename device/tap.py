@@ -19,6 +19,14 @@ class DoubleTap:
         self.prev_t = 0.0
         self.last_tap = -1000.0
         self.locked_until = 0.0
+        self.pending = False            # one tap seen, still waiting to learn if a second follows
+
+    def single(self, now):
+        """True once, max_gap after a lone tap (a double tap never counts as a single)."""
+        if self.pending and now - self.last_tap > self.max_gap:
+            self.pending = False
+            return True
+        return False
 
     def update(self, now, x, y, z):
         """Feed one sample (m/s^2). Returns True when a double tap completes."""
@@ -37,6 +45,8 @@ class DoubleTap:
         self.last_tap = now
         if self.min_gap <= gap <= self.max_gap:
             self.last_tap = -1000.0
+            self.pending = False
             self.locked_until = now + self.lockout
             return True
+        self.pending = True
         return False

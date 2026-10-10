@@ -6,7 +6,8 @@ simulator). A failed fetch keeps the previous good data and retries soon.
 Modes: RUN (the sign), SETUP (Wi-Fi setup portal, entered by a double tap,
 left by another double tap, a finished setup or a timeout) and NOTICE (a
 short message, then back to RUN). wifi and setup_ui are optional; without
-them a double tap only flashes the top row.
+them a double tap only flashes the top row. A single tap (RUN only) turns the
+sign off or on; a double tap always wakes it.
 """
 import config
 import feed
@@ -47,6 +48,7 @@ class App:
         self.had_data = False     # a fetch has worked since boot: the hint is never shown again
         self.clock_start = None   # when the boot-time NO_DATA_HINT_S countdown began
         self.hint_shown = False
+        self.screen_on = True     # a single tap turns the whole sign off (black panel) and on again
 
     def _fetch_arrivals(self, now):
         failed = 0
@@ -100,7 +102,18 @@ class App:
 
     # --- Wi-Fi setup --------------------------------------------------------
 
+    def single_tap(self, now):
+        """Toggle the sign on/off. Data keeps updating while it is off, so it is current on waking."""
+        if self.mode == RUN:
+            self._set_screen(not self.screen_on)
+
+    def _set_screen(self, on):
+        self.screen_on = on
+        self.ui.group.hidden = not on
+
     def double_tap(self, now):
+        if not self.screen_on:
+            self._set_screen(True)
         if self.wifi is None:
             self.ui.flash(now, config.TAP_FLASH_S)
         elif self.mode == RUN:
@@ -139,7 +152,7 @@ class App:
             return
         if self.clock_start is None:
             self.clock_start = now
-        want = not self.had_data and now - self.clock_start >= config.NO_DATA_HINT_S
+        want = self.screen_on and not self.had_data and now - self.clock_start >= config.NO_DATA_HINT_S
         if want and not self.hint_shown:
             self.hint_shown = True
             self.setup_ui.hint()

@@ -421,6 +421,38 @@ class TapTest(unittest.TestCase):
     def test_triple_tap_reports_once(self):
         self.assertEqual(len(self._feed([(1.0, 1.5, 0.04), (1.25, 1.5, 0.04), (1.5, 1.5, 0.04)])), 1)
 
+    @staticmethod
+    def _singles(events, seconds=4.0, hz=500):
+        """Times (s) at which tap.single() fired, and how many double taps fired."""
+        import tap
+        d = tap.DoubleTap()
+        singles, doubles = [], 0
+        for i in range(int(seconds * hz)):
+            t = 100.0 + i / hz
+            z = -8.8
+            for start, peak_g, dur in events:
+                if 100.0 + start <= t < 100.0 + start + dur:
+                    phase = (t - 100.0 - start) / dur
+                    z += peak_g * 9.80665 * (1 if phase < 0.5 else -1) * (1.0 - abs(phase - 0.5) * 2)
+            if d.update(t, 0.5, 4.3, z):
+                doubles += 1
+            elif d.single(t):
+                singles.append(round(t - 100.0, 2))
+        return singles, doubles
+
+    def test_lone_tap_is_a_single_after_the_double_window(self):
+        singles, doubles = self._singles([(1.0, 1.5, 0.04)])
+        self.assertEqual(doubles, 0)
+        self.assertEqual(len(singles), 1)
+        self.assertGreater(singles[0], 1.6)       # not before max_gap has passed
+
+    def test_double_tap_is_never_also_a_single(self):
+        self.assertEqual(self._singles([(1.0, 1.5, 0.04), (1.3, 1.5, 0.04)]), ([], 1))
+
+    def test_slow_taps_are_two_singles(self):
+        singles, doubles = self._singles([(1.0, 1.5, 0.04), (2.0, 1.5, 0.04)])
+        self.assertEqual((len(singles), doubles), (2, 0))
+
     def test_busy_gap_does_not_fake_a_tap(self):
         import tap
         d = tap.DoubleTap()

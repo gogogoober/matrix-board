@@ -110,6 +110,9 @@ def main():
                 if taps.update(now, x, y, z):
                     print("double tap")
                     the_app.double_tap(now)
+                elif taps.single(now):
+                    print("single tap")
+                    the_app.single_tap(now)
         if now - last_frame >= config.ANIM_FRAME_S:   # slides and icon animation
             last_frame = now
             the_app.frame(now)
