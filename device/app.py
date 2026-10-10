@@ -35,9 +35,10 @@ class App:
         self.reboot_after = health.reboot_after(config.REBOOT_AFTER_S, config.REBOOT_AFTER_MAX_S, quiet_reboots)
         self.started = None
         self.arr_fails = 0
+        self.retrying = False     # the last round had a failure: stops that are still fresh are not fetched again
         self.wx_fails = 0
         self.next_arrivals = 0.0
-        self.next_weather = 0.0
+        self.next_weather = config.WEATHER_FIRST_S
         self.last_error = None
         self.mode = RUN
         self.nets = []
@@ -48,9 +49,12 @@ class App:
         self.hint_shown = False
 
     def _fetch_arrivals(self, now):
-        ok = True
+        failed = 0
         any_ok = False
         for slot, stop in zip(self.state.slots, self.stops):
+            age = slot.age(now)
+            if self.retrying and age is not None and age < config.ARRIVALS_REFRESH_S:
+                continue   # a retry: this stop loaded in the last round and is not due yet
             url = config.ARRIVALS_URL % (stop["slug"], stop.get("line") or stop["route"].lower())
             try:
                 minutes = feed.parse_arrivals(self.fetch_json(url), stop["direction"], config.TRAINS_STORED)
@@ -59,9 +63,11 @@ class App:
                 slot.set(minutes, now)
                 any_ok = True
             except Exception as e:  # keep old data, report, retry later
-                ok = False
+                failed += 1
                 self.last_error = "%s: %s" % (type(e).__name__, e)
                 print("arrivals error", stop["route"], self.last_error)
+        ok = not failed
+        self.retrying = not ok
         if any_ok:
             self.had_data = True
             self._good(now)

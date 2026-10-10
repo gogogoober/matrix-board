@@ -113,7 +113,7 @@ def main():
         if now - last_frame >= config.ANIM_FRAME_S:   # slides and icon animation
             last_frame = now
             the_app.frame(now)
-        if now - last_step >= 0.1:   # the app itself only needs ~10 Hz
+        if now - last_step >= (config.STEP_S if the_app.mode == app.RUN else config.STEP_SETUP_S):
             last_step = now
             the_app.step(now)
             if not trusted and now - started >= config.HEALTHY_AFTER_S:
