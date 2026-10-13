@@ -8,6 +8,8 @@ left by another double tap, a finished setup or a timeout) and NOTICE (a
 short message, then back to RUN). wifi and setup_ui are optional; without
 them a double tap only flashes the top row.
 """
+import gc
+
 import config
 import feed
 import health
@@ -18,7 +20,7 @@ NOTICE_S = 3.0
 
 class App:
     def __init__(self, state, ui, fetch_json, wifi=None, setup_ui=None, stops=None, restart=None,
-                 reboot=None, on_good=None, quiet_reboots=0):
+                 reboot=None, on_good=None, quiet_reboots=0, to_setup=None):
         self.state = state
         self.ui = ui
         self.fetch_json = fetch_json
@@ -30,6 +32,7 @@ class App:
         # "nodata" (no good fetch for a long time) or "scheduled". on_good() runs
         # after a good fetch so persisted counters can be cleared.
         self.reboot = reboot
+        self.to_setup = to_setup  # RUN-mode double tap: reboot into setup (fresh heap) instead of opening it here
         self.on_good = on_good
         self.health = None        # started on the first step (needs `now`)
         self.reboot_after = health.reboot_after(config.REBOOT_AFTER_S, config.REBOOT_AFTER_MAX_S, quiet_reboots)
@@ -104,9 +107,23 @@ class App:
         if self.wifi is None:
             self.ui.flash(now, config.TAP_FLASH_S)
         elif self.mode == RUN:
+            if self.to_setup is not None and self.to_setup():
+                return   # (the board resets inside; setup opens right after boot)
             self.enter_setup(now)
         else:
             self.leave_setup(now)
+
+    def _ui(self, name, *args):
+        """Call a setup-screen method; a screen that cannot be drawn (MemoryError while its
+        bitmap is built, ...) is reported, never raised: a crash here would count toward
+        wiping the saved stops and Wi-Fi. Returns True if it drew."""
+        try:
+            getattr(self.setup_ui, name)(*args)
+            return True
+        except Exception as e:
+            self.last_error = "%s: %s" % (type(e).__name__, e)
+            print("setup screen error", name, self.last_error)
+            return False
 
     def _stop_portal(self):
         try:
@@ -122,15 +139,16 @@ class App:
 
     def _fail(self, now, e):
         self.last_error = "%s: %s" % (type(e).__name__, e)
-        print("setup error", self.last_error)
+        print("setup error", self.last_error, "mem_free", getattr(gc, "mem_free", lambda: -1)())
         self._stop_portal()
-        self._notice(now, lambda: self.setup_ui.failed("SETUP FAILED", "TRY AGAIN"))
+        self._notice(now, lambda: self._ui("failed", "SETUP FAILED", "TRY AGAIN"))
 
     def _open_portal(self, now, notice=None):
         ip = self.wifi.portal_start(self.nets)
+        if not self._ui("portal", config.AP_NAME, ip, notice):
+            raise RuntimeError("no setup screen")   # an invisible portal is useless: fail (and stop the AP)
         self.mode = SETUP
         self.setup_until = now + config.PORTAL_TIMEOUT_S
-        self.setup_ui.portal(config.AP_NAME, ip, notice)
 
     def _update_hint(self, now):
         """Boot-time check only: if no data has loaded NO_DATA_HINT_S after boot,
@@ -142,14 +160,15 @@ class App:
         want = not self.had_data and now - self.clock_start >= config.NO_DATA_HINT_S
         if want and not self.hint_shown:
             self.hint_shown = True
-            self.setup_ui.hint()
+            self._ui("hint")
         elif not want and self.hint_shown:
             self.hint_shown = False
-            self.setup_ui.hide()
+            self._ui("hide")
 
     def enter_setup(self, now):
         self.hint_shown = False
-        self.setup_ui.scanning()
+        gc.collect()   # room for the lazily built setup screen and the portal module
+        self._ui("scanning")
         try:
             self.nets = self.wifi.scan()
             self._open_portal(now)
@@ -162,7 +181,7 @@ class App:
         self.mode = RUN
         self.hint_shown = False
         self.clock_start = now    # still no data after setup: a fresh NO_DATA_HINT_S
-        self.setup_ui.hide()
+        self._ui("hide")
         self.next_arrivals = now   # refresh right away
         self.next_weather = now
         if self.health is not None:
@@ -192,17 +211,17 @@ class App:
                 return
         if ssid is None:     # stops only: leave Wi-Fi alone
             self._stop_portal()
-            self._notice(now, self.setup_ui.saved)
+            self._notice(now, lambda: self._ui("saved"))
             return
         self._stop_portal()
-        self.setup_ui.joining(ssid)
+        self._ui("joining", ssid)
         try:
             joined = self.wifi.join(ssid, password)
         except Exception as e:
             self.last_error = "%s: %s" % (type(e).__name__, e)
             joined = False
         if joined:
-            self._notice(now, lambda: self.setup_ui.connected(ssid))
+            self._notice(now, lambda: self._ui("connected", ssid))
             return
         try:
             self._open_portal(now, "COULD NOT JOIN")

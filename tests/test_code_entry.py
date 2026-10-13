@@ -181,6 +181,55 @@ class CodeEntryTest(unittest.TestCase):
             harness.FixtureNet.get_json = orig
         self.assertEqual(self.resets, 0)
 
+    def test_an_error_inside_the_app_resets_but_never_counts_toward_a_wipe(self):
+        import app
+        orig = app.App.step
+
+        def boom(self, now):
+            raise MemoryError("setup screen")
+        app.App.step = boom
+        try:
+            for _ in range(config.CRASHES_CLEAR_ALL + 2):
+                self.assertEqual(self.run_code(), "Reset")
+        finally:
+            app.App.step = orig
+        self.assertEqual(health.load(self.nvm)[0], 0)
+        self.assertIsNotNone(self.picks.load(self.nvm))
+        self.assertIsNotNone(self.creds.load(self.nvm))
+        self.assertIn(10, self.sleeps)
+
+    def test_a_setup_request_opens_setup_at_boot_and_is_taken_once(self):
+        import app
+        health.request_setup(self.nvm)
+        opened = []
+        orig = app.App.enter_setup
+        app.App.enter_setup = lambda self, now: opened.append(now)
+        try:
+            self.assertEqual(self.run_code(), "Stop")
+            self.assertEqual(len(opened), 1)
+            self.assertFalse(health.take_setup_request(self.nvm))   # already taken
+            self.assertEqual(self.run_code(), "Stop")
+            self.assertEqual(len(opened), 1)                       # saved Wi-Fi: no setup this time
+        finally:
+            app.App.enter_setup = orig
+
+    def test_the_run_mode_double_tap_hook_saves_the_request_and_resets(self):
+        import app
+        hooks = []
+        orig = app.App.__init__
+
+        def spy(self, *a, **k):
+            orig(self, *a, **k)
+            hooks.append(self.to_setup)
+        app.App.__init__ = spy
+        try:
+            self.run_code()
+        finally:
+            app.App.__init__ = orig
+        with self.assertRaises(Reset):
+            hooks[0]()
+        self.assertTrue(health.take_setup_request(self.nvm))
+
     def test_data_crash_in_main_resets_and_counts(self):
         def boom():
             raise MemoryError("heap")

@@ -121,3 +121,30 @@ def note_quiet_reboot(nvm=None):
 def clear_quiet(nvm=None):
     crashes, _, bug = load3(nvm)
     save(crashes, 0, bug, nvm)
+
+
+# --- "start Wi-Fi setup on the next boot" (a clean heap) ------------------------
+
+SETUP_OFFSET = 1040
+SETUP_MAGIC = b"SU1"
+
+
+def request_setup(nvm=None):
+    """Ask the next boot to open Wi-Fi setup. True if it was recorded."""
+    try:
+        _nvm(nvm)[SETUP_OFFSET:SETUP_OFFSET + 3] = SETUP_MAGIC
+        return True
+    except Exception:
+        return False
+
+
+def take_setup_request(nvm=None):
+    """True once if setup was requested; clears the request first, so a crash cannot loop."""
+    try:
+        mem = _nvm(nvm)
+        if bytes(mem[SETUP_OFFSET:SETUP_OFFSET + 3]) != SETUP_MAGIC:
+            return False
+        mem[SETUP_OFFSET:SETUP_OFFSET + 3] = b"\xff\xff\xff"
+        return True
+    except Exception:
+        return False

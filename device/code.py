@@ -45,8 +45,27 @@ class LazySetup:   # setupui (~3 KB of RAM) is only loaded when the setup screen
         return getattr(self.real, name)
 
 
+def to_setup():   # RUN-mode double tap: setup needs a clean heap (fragmented by failed fetches), so reboot into it
+    if health.request_setup():
+        microcontroller.reset()
+    print("setup request not saved: opening setup in place")
+    return False
+
+
 def restart():   # the rows (bullet colours, letters) are built once, so reset to apply new stops
     microcontroller.reset()
+
+
+def guarded(fn, now):
+    """Run one app call. An error inside the app (setup screen out of memory, ...) says
+    nothing about the saved stops or Wi-Fi, so it only resets: it must not reach the crash
+    handler, whose counters wipe saved state."""
+    try:
+        fn(now)
+    except Exception as e:
+        print("APP ERROR:", type(e).__name__, e)
+        time.sleep(10)   # long enough for a host that is still writing files
+        microcontroller.reset()
 
 
 def main():
@@ -78,7 +97,7 @@ def main():
             quiet_seen = 0
 
     the_app = app.App(state, screen, wifi.get_json, wifi, LazySetup(display, screen.group),
-                      stops, restart, reboot, on_good, quiet)
+                      stops, restart, reboot, on_good, quiet, to_setup)
     try:
         accel = hw.make_accelerometer()
     except Exception as e:           # no double tap, but the sign still works
@@ -87,7 +106,8 @@ def main():
     taps = tap.DoubleTap(config.TAP_ONSET_G)
     gc.collect()
     print("ready: subway sign, mem_free", gc.mem_free())
-    if not wifi.has_credentials():   # fresh device: go straight to Wi-Fi setup
+    wanted = health.take_setup_request()   # a double tap rebooted us here: clean heap, nothing fetched yet
+    if wanted or not wifi.has_credentials():   # ...or a fresh device: go straight to Wi-Fi setup
         the_app.enter_setup(time.monotonic())
 
     started = time.monotonic()
@@ -109,13 +129,13 @@ def main():
                 accel_errors = 0
                 if taps.update(now, x, y, z):
                     print("double tap")
-                    the_app.double_tap(now)
+                    guarded(the_app.double_tap, now)
         if now - last_frame >= config.ANIM_FRAME_S:   # slides and icon animation
             last_frame = now
             the_app.frame(now)
         if now - last_step >= (config.STEP_S if the_app.mode == app.RUN else config.STEP_SETUP_S):
             last_step = now
-            the_app.step(now)
+            guarded(the_app.step, now)
             if not trusted and now - started >= config.HEALTHY_AFTER_S:
                 trusted = True
                 health.note_healthy()   # long enough without a crash: forget earlier ones

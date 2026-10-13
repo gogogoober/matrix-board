@@ -22,6 +22,9 @@ frozen panel. Written 2026-10-09 from a full read of `device/`.
 | 10 | **Power cut during an NVM write** (credentials, stops, counters). | checksum -> reads as "none" | unchanged (verified by corruption tests); the code never writes the CIRCUITPY filesystem, so a power cut cannot corrupt it. |
 | 11 | **Weather high/low** outside the sane range, or NaN. | only `temp` checked | hi/lo range-checked like temp; bad payload keeps the old data. |
 | 12 | **Boot with the ESP32 not ready** or the accelerometer missing. | crash at boot | any boot exception goes through the crash handler (retry after reset). |
+| 13 | **Setup crashed at the new home** (2026-10-12, found by reading, tests written first, not yet seen on the board). The setup-screen calls (`scanning`, `joining`, `connected`, `saved`, `hide`, `hint`) ran outside any `try`; the first one lazily builds a bitmap while RAM is fragmented by failed TLS/Wi-Fi attempts, so a `MemoryError` escaped to the crash handler, which counts it toward wiping stops (3) and Wi-Fi (6). | crash + wipe counters | `App._ui()` swallows and reports screen errors; a portal screen that cannot be drawn fails the setup (no invisible portal); `gc.collect()` before the screen is built; `code.py` `guarded()` turns any other error inside `app.step/double_tap` into a 10 s hold + reset that never counts toward a wipe. |
+| 14 | **Dead Wi-Fi blocked the loop** (3 x ~10 s connect per fetch) so the double tap that starts setup was missed. | ~30-45 s blocked per cycle | Until the radio has joined once since boot: 1 try, 45 s cooldown (`WIFI_FIRST_TRIES`, `WIFI_FIRST_COOLDOWN_S`); after a join the old 3 tries / 20 s. |
+| 15 | **`MemoryError` opening setup from the running sign** (seen on the board 2026-10-12: `setup error MemoryError: memory allocation failed, allocating 255 bytes`). Failed Wi-Fi/TLS attempts fragment the heap, and setup compiles `portal.py` (14 KB source) on top. Not an in-flight request: setup mode makes no calls. | setup failed, notice, reset | A RUN-mode double tap writes a request to NVM (`health.request_setup`, offset 1040) and resets; the next boot (`health.take_setup_request`, cleared first so it cannot loop) opens setup on a clean heap, the same path as a device with no Wi-Fi. If the NVM write fails, setup opens in place as before. Seen working on the board with a phone-less run (double tap -> reset -> ready). |
 
 ## Not fixable in code (be honest)
 
@@ -73,3 +76,12 @@ scheduled restart), `device/net.py` (cooldown, radio reset, size guard),
   shipped module does not define (the exact bug of the incident).
 - Tests: `tests/test_health.py` (classification, no-wipe, hold), `tests/test_code_entry.py`
   (real `code.py` against fakes), `tests/test_deploy.py`.
+
+## Deploying (2026-10-12)
+
+Two deploys died with `OSError: [Errno 5]` and the USB drive vanished while the sign was
+running (Wi-Fi retries + lit panel on the laptop's USB); each time the board came back with an
+EMPTY filesystem (stub `code.py`, empty `lib/`). Deploys succeeded while the board ran only the
+stub. After such a drop: single RESET, wait for CIRCUITPY, restore `lib/` from
+`backup/original-circuitpy/lib/` (fsync each file, then `diff -rq`), then `deploy.py app`.
+Use a wall supply (5 V, 3 A+) when deploying. Idea, not done: have `deploy.py` park the board on a stub first.

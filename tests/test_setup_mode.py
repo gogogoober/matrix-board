@@ -156,6 +156,68 @@ class SetupModeTest(unittest.TestCase):
         self.a.step(11.0)
         self.assertEqual(self.a.mode, app.NOTICE)
 
+    def _break_screen(self, *names, exc=MemoryError):
+        def boom(*a, **k):
+            raise exc("heap")
+        for n in names:
+            setattr(self.a.setup_ui, n, boom)
+
+    def test_a_screen_that_cannot_be_built_never_crashes_entering_setup(self):
+        self._break_screen("scanning", "message", "portal", "failed")
+        self.a.double_tap(10.0)               # must not raise (a crash here wipes saved state)
+        self.a.step(10.0 + app.NOTICE_S + 0.1)
+        self.assertEqual(self.a.mode, app.RUN)
+
+    def test_the_portal_still_opens_if_only_the_scanning_screen_fails(self):
+        self._break_screen("scanning")
+        self.a.double_tap(10.0)
+        self.assertEqual(self.a.mode, app.SETUP)
+
+    def test_screen_failures_while_joining_or_leaving_never_raise(self):
+        self.a.double_tap(10.0)
+        self._break_screen("joining", "connected", "saved", "hide", "hint")
+        self.wifi.submit = ("HomeNet", "hunter22", None)
+        self.a.step(11.0)                      # join + connected screen
+        self.a.step(11.0 + app.NOTICE_S + 0.1) # leave: hide
+        self.assertEqual(self.a.mode, app.RUN)
+
+    def test_a_broken_hint_screen_never_raises_from_step(self):
+        net, wifi, display, screen, a = harness.make_setup()
+        net.fail = True
+        a.setup_ui.hint = lambda: (_ for _ in ()).throw(MemoryError("heap"))
+        a.step(0.0)
+        a.step(config.NO_DATA_HINT_S + 1)
+
+    def test_memory_is_collected_before_the_setup_screen_is_built(self):
+        import gc
+        calls = []
+        orig = gc.collect
+        gc.collect = lambda *a: calls.append(1) or orig()
+        try:
+            self.a.double_tap(10.0)
+        finally:
+            gc.collect = orig
+        self.assertTrue(calls)
+
+    def test_run_mode_double_tap_reboots_into_setup_when_the_hook_is_set(self):
+        calls = []
+        self.a.to_setup = lambda: calls.append(1) or True
+        self.a.double_tap(10.0)
+        self.assertEqual(calls, [1])
+        self.assertEqual(self.a.mode, app.RUN)        # nothing opened in place
+        self.assertEqual(self.wifi.calls, [])
+
+    def test_if_the_request_cannot_be_saved_setup_opens_in_place(self):
+        self.a.to_setup = lambda: False
+        self.a.double_tap(10.0)
+        self.assertEqual(self.a.mode, app.SETUP)
+
+    def test_second_double_tap_still_leaves_setup_without_the_hook(self):
+        self.a.to_setup = lambda: True
+        self.a.mode = app.SETUP
+        self.a.double_tap(10.0)
+        self.assertEqual(self.a.mode, app.RUN)
+
     def test_every_screen_stays_inside_the_panel_and_draws_something(self):
         s = self.a.setup_ui
         for show in (s.scanning, lambda: s.joining("Some Very Long Network Name ✓"),

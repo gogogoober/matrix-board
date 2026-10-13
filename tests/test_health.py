@@ -174,3 +174,22 @@ class CrashEscalationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SetupRequestTest(unittest.TestCase):
+    def test_request_is_taken_once(self):
+        nvm = bytearray(b"\xff" * 8192)
+        self.assertFalse(health.take_setup_request(nvm))
+        self.assertTrue(health.request_setup(nvm))
+        self.assertTrue(health.take_setup_request(nvm))
+        self.assertFalse(health.take_setup_request(nvm))
+
+    def test_it_does_not_touch_the_crash_counters(self):
+        nvm = bytearray(b"\xff" * 8192)
+        health.save(2, 1, 3, nvm)
+        health.request_setup(nvm)
+        self.assertEqual(health.load3(nvm), (2, 1, 3))
+
+    def test_broken_nvm_is_not_a_request(self):
+        self.assertFalse(health.take_setup_request(object()))
+        self.assertFalse(health.request_setup(object()))
