@@ -45,11 +45,33 @@ class LazySetup:   # setupui (~3 KB of RAM) is only loaded when the setup screen
         return getattr(self.real, name)
 
 
+def to_setup():   # RUN-mode double tap: setup needs a clean heap (fragmented by failed fetches), so reboot into it
+    if health.request_setup():
+        microcontroller.reset()
+    print("setup request not saved: opening setup in place")
+    return False
+
+
 def restart():   # the rows (bullet colours, letters) are built once, so reset to apply new stops
     microcontroller.reset()
 
 
-def main():
+def app_failed(e):
+    """An error inside the app (setup screen out of memory, ...) says nothing about the saved
+    stops or Wi-Fi, so it only resets: it must not reach the crash handler, whose counters wipe
+    saved state. Called from inline try/except in main(): a wrapper function around app.step would
+    add a Python frame to every fetch, and the HTTPS path is deep enough that the pystack runs out
+    (adafruit_requests then reports only "Sending request failed")."""
+    print("APP ERROR:", type(e).__name__, e)
+    time.sleep(10)   # long enough for a host that is still writing files
+    microcontroller.reset()
+
+
+def build():
+    """Everything that is done once at boot. Its frame is gone before the loop starts: the
+    HTTPS fetch path is so deep that the pystack runs out if the frame that stays on the stack
+    during every fetch is large (2026-10-12: every request failed with "Sending request failed"
+    when main() had ~30 locals; adafruit_requests hides the real "pystack exhausted")."""
     import app
     import hw
     import model
@@ -78,7 +100,7 @@ def main():
             quiet_seen = 0
 
     the_app = app.App(state, screen, wifi.get_json, wifi, LazySetup(display, screen.group),
-                      stops, restart, reboot, on_good, quiet)
+                      stops, restart, reboot, on_good, quiet, to_setup)
     try:
         accel = hw.make_accelerometer()
     except Exception as e:           # no double tap, but the sign still works
@@ -87,9 +109,15 @@ def main():
     taps = tap.DoubleTap(config.TAP_ONSET_G)
     gc.collect()
     print("ready: subway sign, mem_free", gc.mem_free())
-    if not wifi.has_credentials():   # fresh device: go straight to Wi-Fi setup
+    wanted = health.take_setup_request()   # a double tap rebooted us here: clean heap, nothing fetched yet
+    if wanted or not wifi.has_credentials():   # ...or a fresh device: go straight to Wi-Fi setup
         the_app.enter_setup(time.monotonic())
+    return the_app, accel, taps
 
+
+def run(the_app, accel, taps):
+    """The endless loop. Keep it lean (few locals) and call the app inline: this frame stays
+    on the pystack during every fetch (see build())."""
     started = time.monotonic()
     trusted = False
     last_step = 0.0
@@ -109,16 +137,26 @@ def main():
                 accel_errors = 0
                 if taps.update(now, x, y, z):
                     print("double tap")
-                    the_app.double_tap(now)
+                    try:
+                        the_app.double_tap(now)
+                    except Exception as e:
+                        app_failed(e)
         if now - last_frame >= config.ANIM_FRAME_S:   # slides and icon animation
             last_frame = now
             the_app.frame(now)
-        if now - last_step >= (config.STEP_S if the_app.mode == app.RUN else config.STEP_SETUP_S):
+        if now - last_step >= (config.STEP_S if the_app.mode == the_app.RUN else config.STEP_SETUP_S):
             last_step = now
-            the_app.step(now)
+            try:
+                the_app.step(now)
+            except Exception as e:
+                app_failed(e)
             if not trusted and now - started >= config.HEALTHY_AFTER_S:
                 trusted = True
                 health.note_healthy()   # long enough without a crash: forget earlier ones
+
+
+def main():
+    run(*build())
 
 
 try:

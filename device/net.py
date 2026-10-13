@@ -35,6 +35,7 @@ class Net:
         self._dns = None
         self._ap = False
         self._no_retry_until = 0.0   # after a failed connect, fail fast until then
+        self._joined = False         # has the radio joined a network since boot?
 
     def credentials(self):
         """(ssid, password) saved by the setup portal, else settings.toml, else None."""
@@ -56,15 +57,19 @@ class Net:
         if time.monotonic() < self._no_retry_until:
             raise RuntimeError("wifi down (cooling off)")
         ssid, password = got
-        for _ in range(tries or config.WIFI_CONNECT_TRIES):
+        n = tries or (config.WIFI_CONNECT_TRIES if self._joined else config.WIFI_FIRST_TRIES)
+        for _ in range(n):
             try:
                 self.esp.connect_AP(ssid, password)
+                self._joined = True
                 return
             except Exception:   # OSError, RuntimeError("ESP32 timed out"), ...
                 time.sleep(2)
         # Blocking again and again while the router is off would stall the sign
-        # for minutes per cycle: fail instantly for a while instead.
-        self._no_retry_until = time.monotonic() + config.WIFI_COOLDOWN_S
+        # for minutes per cycle: fail instantly for a while instead. Never joined since
+        # boot (probably a new place): block least and leave the loop free for the double tap.
+        self._no_retry_until = time.monotonic() + (
+            config.WIFI_COOLDOWN_S if self._joined else config.WIFI_FIRST_COOLDOWN_S)
         raise RuntimeError("wifi connect failed")
 
     def reset_radio(self):
