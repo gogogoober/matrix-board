@@ -19,6 +19,7 @@ NOTICE_S = 3.0
 
 
 class App:
+    RUN = RUN   # so a caller needs no `import app` just to compare modes
     def __init__(self, state, ui, fetch_json, wifi=None, setup_ui=None, stops=None, restart=None,
                  reboot=None, on_good=None, quiet_reboots=0, to_setup=None):
         self.state = state

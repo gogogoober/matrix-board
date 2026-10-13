@@ -230,6 +230,16 @@ class CodeEntryTest(unittest.TestCase):
             hooks[0]()
         self.assertTrue(health.take_setup_request(self.nvm))
 
+    def test_the_app_is_called_inline_not_through_a_wrapper_function(self):
+        """The HTTPS fetch path is so deep that one extra Python frame above app.step makes the
+        board's pystack run out (seen 2026-10-12: every request failed with "Sending request
+        failed" after a guarded(fn) wrapper was added). Keep the calls inline in main()."""
+        src = open(CODE).read()
+        self.assertIn("the_app.step(now)", src)
+        self.assertIn("the_app.double_tap(now)", src)
+        self.assertNotIn("def guarded", src)
+        self.assertNotIn("(the_app.step", src)
+
     def test_data_crash_in_main_resets_and_counts(self):
         def boom():
             raise MemoryError("heap")
